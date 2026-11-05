@@ -2,11 +2,6 @@
 
 #include <string.h>
 
-static char *trimmed_copy(const char *text) {
-  char *copy = g_strdup(text ? text : "");
-  return g_strstrip(copy);
-}
-
 UResult *u_result_new(UProvider provider, const char *title,
                       const char *description, const char *icon, int score,
                       UAction action, const char *payload,
@@ -96,169 +91,6 @@ const char *u_provider_icon(UProvider provider) {
   default:
     return "dialog-information";
   }
-}
-
-int u_intent_boost(UIntent intent, UProvider provider) {
-  switch (intent) {
-  case U_INTENT_EMPTY:
-    return provider == U_PROVIDER_APPS ? 100 : 0;
-  case U_INTENT_APP:
-    switch (provider) {
-    case U_PROVIDER_APPS:
-      return 1400;
-    case U_PROVIDER_FILES:
-      return 250;
-    case U_PROVIDER_BOOKMARKS:
-      return 150;
-    case U_PROVIDER_WEB:
-      return 50;
-    default:
-      return 0;
-    }
-  case U_INTENT_CALC:
-    return provider == U_PROVIDER_CALC ? 5000
-                                      : (provider == U_PROVIDER_WEB ? 100 : 0);
-  case U_INTENT_WEB:
-    return provider == U_PROVIDER_WEB
-               ? 700
-               : (provider == U_PROVIDER_APPS || provider == U_PROVIDER_BOOKMARKS
-                      ? 100
-                      : 0);
-  case U_INTENT_FILE:
-    return provider == U_PROVIDER_FILES
-               ? 1800
-               : (provider == U_PROVIDER_WEB ? 100 : 0);
-  case U_INTENT_DICTIONARY:
-    return provider == U_PROVIDER_DICTIONARY
-               ? 1400
-               : (provider == U_PROVIDER_WEB ? 100 : 0);
-  case U_INTENT_GITHUB:
-    return provider == U_PROVIDER_GITHUB
-               ? 1600
-               : (provider == U_PROVIDER_WEB ? 100 : 0);
-  case U_INTENT_WEATHER:
-    return provider == U_PROVIDER_WEATHER ? 1600 : 0;
-  case U_INTENT_CLIPBOARD:
-    return provider == U_PROVIDER_CLIPBOARD ? 1600 : 0;
-  case U_INTENT_URL:
-    return provider == U_PROVIDER_WEB ? 1800 : 0;
-  }
-  return 0;
-}
-
-gboolean u_query_is_url(const char *query) {
-  if (!query) {
-    return FALSE;
-  }
-  return g_regex_match_simple("^[A-Za-z][A-Za-z0-9+.-]*://", query, 0, 0) ||
-         g_regex_match_simple("^www\\.", query, G_REGEX_CASELESS, 0);
-}
-
-gboolean u_query_is_path(const char *query) {
-  if (!query || !*query) {
-    return FALSE;
-  }
-  return g_str_has_prefix(query, "/") || g_str_has_prefix(query, "~/") ||
-         g_str_has_prefix(query, "./") || g_str_has_prefix(query, "../") ||
-         g_strcmp0(query, "~") == 0 || strchr(query, '/') != NULL;
-}
-
-gboolean u_query_looks_calculable(const char *query) {
-  char *text = trimmed_copy(query);
-  if (!*text) {
-    g_free(text);
-    return FALSE;
-  }
-  gboolean result = FALSE;
-  if (text[0] == '=') {
-    result = TRUE;
-  } else if (strpbrk(text, "0123456789") != NULL) {
-    result = TRUE;
-  } else if (g_regex_match_simple(
-                 "^(sqrt|cbrt|sin|cos|tan|asin|acos|atan|log|ln|abs|round|"
-                 "floor|ceil|factorial|pi|e)\\b",
-                 text, G_REGEX_CASELESS, 0)) {
-    result = TRUE;
-  }
-  g_free(text);
-  return result;
-}
-
-UIntent u_classify_intent(const char *query, gboolean *calc_like,
-                          gboolean *path_like) {
-  char *text = trimmed_copy(query);
-  char *folded = g_utf8_casefold(text, -1);
-  if (calc_like) {
-    *calc_like = FALSE;
-  }
-  if (path_like) {
-    *path_like = FALSE;
-  }
-  if (!*folded) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_EMPTY;
-  }
-  if (u_query_is_url(folded)) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_URL;
-  }
-  if (folded[0] == '!') {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_WEB;
-  }
-  if (g_str_has_prefix(folded, "github ") || g_str_has_prefix(folded, "gh ")) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_GITHUB;
-  }
-  if (g_str_has_prefix(folded, "weather ") ||
-      g_str_has_prefix(folded, "weather in ")) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_WEATHER;
-  }
-  if (g_str_has_prefix(folded, "define ") ||
-      g_str_has_prefix(folded, "definition ") ||
-      g_str_has_prefix(folded, "dict ")) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_DICTIONARY;
-  }
-  if (g_str_has_prefix(folded, "clipboard ") ||
-      g_str_has_prefix(folded, "clip ")) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_CLIPBOARD;
-  }
-  gboolean is_path = u_query_is_path(text);
-  if (path_like) {
-    *path_like = is_path;
-  }
-  if (is_path) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_FILE;
-  }
-  gboolean is_calc = u_query_looks_calculable(text);
-  if (calc_like) {
-    *calc_like = is_calc;
-  }
-  if (is_calc) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_CALC;
-  }
-  if (strchr(folded, ' ') == NULL) {
-    g_free(text);
-    g_free(folded);
-    return U_INTENT_APP;
-  }
-  g_free(text);
-  g_free(folded);
-  return U_INTENT_WEB;
 }
 
 char *u_url_encode(const char *text) {
@@ -376,6 +208,8 @@ void u_config_init(UConfig *config) {
   config->web = TRUE;
   config->files = TRUE;
   config->clipboard = TRUE;
+  config->clipboard_automatic = FALSE;
+  config->clipboard_cache_seconds = 30;
   config->dictionary = TRUE;
   config->github = TRUE;
   config->weather = TRUE;
@@ -416,6 +250,12 @@ gboolean u_config_load(UConfig *config, const char *path) {
   config->files = key_bool(file, "providers", "files", config->files);
   config->clipboard =
       key_bool(file, "providers", "clipboard", config->clipboard);
+  config->clipboard_automatic =
+      key_bool(file, "clipboard", "automatic", config->clipboard_automatic);
+  config->clipboard_cache_seconds = key_int(
+      file, "clipboard", "cache_seconds", config->clipboard_cache_seconds);
+  config->clipboard_cache_seconds =
+      CLAMP(config->clipboard_cache_seconds, 1, 3600);
   config->dictionary =
       key_bool(file, "providers", "dictionary", config->dictionary);
   config->github = key_bool(file, "providers", "github", config->github);

@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.1.0',
+  version: '0.2.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -14,7 +14,7 @@ deps = [rofi, glib, gio, gio_unix, dependency('gmodule-2.0'), dependency('cairo'
 
 shared_module(
   'universal',
-  ['src/universal.c', 'src/plugin.c'],
+  ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c'],
   dependencies: deps,
   install: true,
   install_dir: get_option('libdir') / 'rofi',
@@ -34,8 +34,16 @@ install_data(
 
 test_core = executable(
   'test-core',
-  ['tests/test_core.c', 'src/universal.c'],
+  ['tests/test_core.c', 'src/universal.c', 'src/query.c'],
   dependencies: [glib],
   include_directories: include_directories('src'),
 )
 test('core', test_core)
+
+test_process = executable(
+  'test-process',
+  ['tests/test_process.c', 'src/process.c'],
+  dependencies: [glib, gio],
+  include_directories: include_directories('src'),
+)
+test('process', test_process)

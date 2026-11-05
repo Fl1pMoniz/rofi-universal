@@ -1,3 +1,4 @@
+#include "process.h"
 #include "universal.h"
 
 #include <gio/gdesktopappinfo.h>
@@ -23,6 +24,8 @@ typedef struct {
   char *icon;
   char *folded_terms;
   char *folded_name;
+  char *folded_executable;
+  char *folded_keywords;
 } UApp;
 
 typedef struct {
@@ -32,19 +35,28 @@ typedef struct {
 } UBookmark;
 
 typedef struct {
+  char *id;
+  char *preview;
+  char *folded;
+} UClipboardEntry;
+
+typedef struct {
   UConfig config;
   GPtrArray *results;
+  GPtrArray *local_results;
+  GPtrArray *async_results;
   GPtrArray *apps;
   GPtrArray *bookmarks;
+  GPtrArray *clipboard_entries;
   char *query;
-  char *calc_text;
-  char *calc_query;
-  guint calc_generation;
+  guint query_generation;
+  GCancellable *life_cancellable;
+  GCancellable *query_cancellable;
   guint reload_source;
-  gboolean calc_like;
-  gboolean path_like;
-  UIntent intent;
+  UQueryAnalysis analysis;
   GPtrArray *jobs;
+  gint64 clipboard_loaded_at;
+  gboolean clipboard_loading;
 } UMode;
 
 typedef struct {
@@ -52,7 +64,23 @@ typedef struct {
   guint generation;
 } CalcJob;
 
+typedef struct {
+  UMode *mode;
+  guint generation;
+} FileJob;
+
+typedef struct {
+  UMode *mode;
+} ClipboardJob;
+
+typedef struct {
+  UMode *mode;
+} BookmarkJob;
+
 static gboolean update_query(UMode *mode, const char *input);
+static void rebuild_local_results(UMode *mode);
+static void merge_results(UMode *mode);
+static void schedule_reload(UMode *mode);
 
 static char *fold_string(const char *text) {
   return g_utf8_casefold(text ? text : "", -1);
@@ -103,16 +131,27 @@ static int match_score_folded(const char *haystack, const char *title,
   return score;
 }
 
-static int result_in_intent(const UMode *mode, UProvider provider) {
-  return u_intent_boost(mode->intent, provider);
+static gboolean provider_is_local(UProvider provider) {
+  return provider == U_PROVIDER_APPS || provider == U_PROVIDER_CALC ||
+         provider == U_PROVIDER_FILES || provider == U_PROVIDER_CLIPBOARD;
+}
+
+static void add_result_to(UMode *mode, GPtrArray *target, UResult *result) {
+  if (!mode || !target || !result) {
+    return;
+  }
+  result->score = u_score_signals(
+      result->score, u_provider_relevance(&mode->analysis, result->provider),
+      provider_is_local(result->provider));
+  g_ptr_array_add(target, result);
 }
 
 static void add_result(UMode *mode, UResult *result) {
-  if (!result) {
-    return;
-  }
-  result->score += result_in_intent(mode, result->provider);
-  g_ptr_array_add(mode->results, result);
+  add_result_to(mode, mode->local_results, result);
+}
+
+static void add_async_result(UMode *mode, UResult *result) {
+  add_result_to(mode, mode->async_results, result);
 }
 
 static void add_app_result(UMode *mode, const UApp *app, int score) {
@@ -136,6 +175,8 @@ static void app_free(gpointer data) {
   g_free(app->icon);
   g_free(app->folded_terms);
   g_free(app->folded_name);
+  g_free(app->folded_executable);
+  g_free(app->folded_keywords);
   g_free(app);
 }
 
@@ -147,6 +188,8 @@ static int app_compare(gconstpointer a, gconstpointer b) {
 
 static void load_apps(UMode *mode) {
   GList *all = g_app_info_get_all();
+  GHashTable *seen =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
   for (GList *item = all; item; item = item->next) {
     GAppInfo *info = G_APP_INFO(item->data);
     if (!G_IS_DESKTOP_APP_INFO(info) || !g_app_info_should_show(info)) {
@@ -155,10 +198,11 @@ static void load_apps(UMode *mode) {
     }
     const char *id = g_app_info_get_id(info);
     const char *name = g_app_info_get_name(info);
-    if (!id || !name || !*id || !*name) {
+    if (!id || !name || !*id || !*name || g_hash_table_contains(seen, id)) {
       g_object_unref(info);
       continue;
     }
+    g_hash_table_add(seen, g_strdup(id));
     UApp *app = g_new0(UApp, 1);
     app->id = g_strdup(id);
     app->name = g_strdup(name);
@@ -182,9 +226,10 @@ static void load_apps(UMode *mode) {
     append_term(terms, categories);
     append_term(terms, executable);
     append_term(terms, command);
-    char *folded = fold_string(terms->str);
-    app->folded_terms = folded;
+    app->folded_terms = fold_string(terms->str);
     app->folded_name = fold_string(name);
+    app->folded_executable = fold_string(executable);
+    app->folded_keywords = fold_string(keywords);
     g_string_free(terms, TRUE);
     g_free(generic);
     g_free(keywords);
@@ -193,6 +238,7 @@ static void load_apps(UMode *mode) {
     g_object_unref(info);
   }
   g_list_free(all);
+  g_hash_table_destroy(seen);
   g_ptr_array_sort(mode->apps, app_compare);
 }
 
@@ -204,25 +250,12 @@ static void bookmark_free(gpointer data) {
   g_free(bookmark);
 }
 
-static gboolean run_capture(const char *const *argv, char **output,
-                            int *exit_status) {
-  GError *error = NULL;
-  int status = 0;
-  *output = NULL;
-  gboolean ok = g_spawn_sync(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH,
-                             NULL, NULL, output, NULL, &status, &error);
-  if (exit_status) {
-    *exit_status = status;
-  }
-  if (!ok) {
-    if (error) {
-      g_error_free(error);
-    }
-    g_free(*output);
-    *output = NULL;
-    return FALSE;
-  }
-  return TRUE;
+static void clipboard_entry_free(gpointer data) {
+  UClipboardEntry *entry = data;
+  g_free(entry->id);
+  g_free(entry->preview);
+  g_free(entry->folded);
+  g_free(entry);
 }
 
 static void add_bookmark_line(UMode *mode, const char *title, const char *url) {
@@ -238,7 +271,7 @@ static void add_bookmark_line(UMode *mode, const char *title, const char *url) {
   g_ptr_array_add(mode->bookmarks, bookmark);
 }
 
-static void parse_bookmark_tsv(UMode *mode, char *output) {
+static void parse_bookmark_tsv(UMode *mode, const char *output) {
   char **lines = g_strsplit(output ? output : "", "\n", -1);
   for (int i = 0; lines[i]; i++) {
     char *tab = strchr(lines[i], '\t');
@@ -251,8 +284,48 @@ static void parse_bookmark_tsv(UMode *mode, char *output) {
   g_strfreev(lines);
 }
 
-static void load_chromium_bookmarks(UMode *mode) {
-  const char *jq = g_find_program_in_path("jq");
+static void remove_job(UMode *mode, gpointer job) {
+  if (mode) {
+    g_ptr_array_remove(mode->jobs, job);
+  }
+}
+
+static void bookmarks_changed(UMode *mode) {
+  if (!mode || !mode->query || !*mode->query) {
+    return;
+  }
+  rebuild_local_results(mode);
+  merge_results(mode);
+  schedule_reload(mode);
+}
+
+static void bookmark_process_done(const char *stdout_text,
+                                  const char *stderr_text, int exit_status,
+                                  gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
+  BookmarkJob *job = data;
+  UMode *mode = job->mode;
+  if (mode && success && stdout_text) {
+    parse_bookmark_tsv(mode, stdout_text);
+    bookmarks_changed(mode);
+  }
+  remove_job(mode, job);
+  g_free(job);
+}
+
+static void start_bookmark_process(UMode *mode, const char *const *argv) {
+  if (!mode || !mode->life_cancellable) {
+    return;
+  }
+  BookmarkJob *job = g_new0(BookmarkJob, 1);
+  job->mode = mode;
+  g_ptr_array_add(mode->jobs, job);
+  u_process_run(argv, mode->life_cancellable, bookmark_process_done, job);
+}
+
+static void start_chromium_bookmarks(UMode *mode) {
+  char *jq = g_find_program_in_path("jq");
   if (!jq) {
     return;
   }
@@ -278,26 +351,24 @@ static void load_chromium_bookmarks(UMode *mode) {
             jq, "-r",
             ".. | objects | select(.type==\"url\") | [.name,.url] | @tsv",
             path, NULL};
-        char *output = NULL;
-        if (run_capture(argv, &output, NULL)) {
-          parse_bookmark_tsv(mode, output);
-          g_free(output);
-        }
+        start_bookmark_process(mode, argv);
       }
       g_free(path);
     }
     g_dir_close(dir);
     g_free(base);
   }
+  g_free(jq);
 }
 
-static void load_firefox_bookmarks_from(UMode *mode, const char *root) {
-  const char *sqlite3 = g_find_program_in_path("sqlite3");
+static void start_firefox_bookmarks_from(UMode *mode, const char *root) {
+  char *sqlite3 = g_find_program_in_path("sqlite3");
   if (!sqlite3) {
     return;
   }
   GDir *dir = g_dir_open(root, 0, NULL);
   if (!dir) {
+    g_free(sqlite3);
     return;
   }
   const char *profile;
@@ -312,27 +383,24 @@ static void load_firefox_bookmarks_from(UMode *mode, const char *root) {
         "SELECT COALESCE(b.title,''), p.url FROM moz_bookmarks b "
         "JOIN moz_places p ON p.id=b.fk WHERE b.type=1 AND p.url IS NOT NULL",
         NULL};
-    char *output = NULL;
-    if (run_capture(argv, &output, NULL)) {
-      parse_bookmark_tsv(mode, output);
-      g_free(output);
-    }
+    start_bookmark_process(mode, argv);
     g_free(path);
   }
   g_dir_close(dir);
+  g_free(sqlite3);
 }
 
-static void load_bookmarks(UMode *mode) {
+static void start_bookmarks(UMode *mode) {
   if (!mode->config.bookmarks) {
     return;
   }
-  load_chromium_bookmarks(mode);
+  start_chromium_bookmarks(mode);
   char *firefox = g_build_filename(g_get_home_dir(), ".mozilla", "firefox", NULL);
-  load_firefox_bookmarks_from(mode, firefox);
+  start_firefox_bookmarks_from(mode, firefox);
   g_free(firefox);
   char *zen =
       g_build_filename(g_get_user_config_dir(), "zen", "Profiles", NULL);
-  load_firefox_bookmarks_from(mode, zen);
+  start_firefox_bookmarks_from(mode, zen);
   g_free(zen);
 }
 
@@ -349,8 +417,21 @@ static void add_apps(UMode *mode, const char *folded_query) {
   }
   for (guint i = 0; i < mode->apps->len; i++) {
     UApp *app = g_ptr_array_index(mode->apps, i);
-    int score =
-        match_score_folded(app->folded_terms, app->folded_name, folded_query);
+    int score = match_score_folded(app->folded_name, app->folded_name,
+                                   folded_query);
+    if (score == 0) {
+      score = match_score_folded(app->folded_executable,
+                                 app->folded_executable, folded_query);
+    }
+    if (score == 0) {
+      score =
+          match_score_folded(app->folded_keywords, app->folded_keywords,
+                             folded_query);
+    }
+    if (score == 0) {
+      score = match_score_folded(app->folded_terms, app->folded_name,
+                                 folded_query);
+    }
     if (score > 0) {
       add_app_result(mode, app, score);
     }
@@ -358,12 +439,15 @@ static void add_apps(UMode *mode, const char *folded_query) {
 }
 
 static void add_web(UMode *mode, const char *query, const char *folded_query) {
-  if (!mode->config.web || mode->intent == U_INTENT_GITHUB) {
+  if (!mode->config.web ||
+      mode->analysis.explicit_provider == U_PROVIDER_GITHUB ||
+      mode->analysis.explicit_provider == U_PROVIDER_CLIPBOARD) {
     return;
   }
   if (u_query_is_url(query)) {
-    char *url = g_str_has_prefix(query, "www.") ? g_strdup_printf("https://%s", query)
-                                                : g_strdup(query);
+    char *url =
+        g_str_has_prefix(query, "www.") ? g_strdup_printf("https://%s", query)
+                                        : g_strdup(query);
     char *title = g_strdup_printf("Open %s", url);
     add_result(mode, u_result_new(U_PROVIDER_WEB, title, "Web · open address",
                                   "applications-internet", 1000,
@@ -503,7 +587,7 @@ static void add_dictionary(UMode *mode, const char *query,
 
 static void add_github(UMode *mode, const char *query,
                        const char *folded_query) {
-  if (!mode->config.github || mode->intent != U_INTENT_GITHUB) {
+  if (!mode->config.github || mode->analysis.github_score < 600) {
     return;
   }
   const char *term = NULL;
@@ -526,7 +610,7 @@ static void add_github(UMode *mode, const char *query,
 
 static void add_weather(UMode *mode, const char *query,
                         const char *folded_query) {
-  if (!mode->config.weather || mode->intent != U_INTENT_WEATHER) {
+  if (!mode->config.weather || mode->analysis.weather_score < 600) {
     return;
   }
   const char *city = NULL;
@@ -569,152 +653,6 @@ static void add_path_result(UMode *mode, const char *query) {
   g_free(expanded);
 }
 
-static void add_file_search(UMode *mode, const char *query,
-                            const char *folded_query) {
-  (void)folded_query;
-  if (!mode->config.files || mode->path_like || strlen(query) < 3 ||
-      (mode->intent != U_INTENT_FILE && mode->intent != U_INTENT_APP)) {
-    return;
-  }
-  const char *fd = g_find_program_in_path("fd");
-  if (!fd) {
-    return;
-  }
-  const char *timeout = g_find_program_in_path("timeout");
-  char *roots = g_strdup(mode->config.file_roots ? mode->config.file_roots : "~");
-  char **root_list = g_strsplit_set(roots, ":;", -1);
-  GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-  char max_results[16];
-  char max_depth[16];
-  g_snprintf(max_results, sizeof(max_results), "%d",
-             mode->config.file_max_results);
-  g_snprintf(max_depth, sizeof(max_depth), "%d", mode->config.file_max_depth);
-  for (int i = 0; root_list[i]; i++) {
-    if (!*root_list[i]) {
-      continue;
-    }
-    char *root = u_expand_path(root_list[i]);
-    if (!g_file_test(root, G_FILE_TEST_IS_DIR)) {
-      g_free(root);
-      continue;
-    }
-    GPtrArray *args = g_ptr_array_new();
-    if (timeout) {
-      g_ptr_array_add(args, (gpointer)timeout);
-      g_ptr_array_add(args, (gpointer)"0.20");
-    }
-    g_ptr_array_add(args, (gpointer)fd);
-    g_ptr_array_add(args, (gpointer)"--color=never");
-    g_ptr_array_add(args, (gpointer)"--hidden");
-    g_ptr_array_add(args, (gpointer)"--fixed-strings");
-    g_ptr_array_add(args, (gpointer)"--max-results");
-    g_ptr_array_add(args, max_results);
-    g_ptr_array_add(args, (gpointer)"--max-depth");
-    g_ptr_array_add(args, max_depth);
-    g_ptr_array_add(args, (gpointer)"--exclude");
-    g_ptr_array_add(args, (gpointer)".git");
-    g_ptr_array_add(args, (gpointer)"--exclude");
-    g_ptr_array_add(args, (gpointer)"node_modules");
-    g_ptr_array_add(args, (gpointer)"--exclude");
-    g_ptr_array_add(args, (gpointer)".cache");
-    g_ptr_array_add(args, (gpointer)"--");
-    g_ptr_array_add(args, (gpointer)query);
-    g_ptr_array_add(args, root);
-    g_ptr_array_add(args, NULL);
-    char *output = NULL;
-    if (run_capture((const char *const *)args->pdata, &output, NULL)) {
-      char **lines = g_strsplit(output ? output : "", "\n", -1);
-      for (int j = 0; lines[j]; j++) {
-        if (!*lines[j] || g_hash_table_contains(seen, lines[j])) {
-          continue;
-        }
-        g_hash_table_add(seen, g_strdup(lines[j]));
-        const char *path = lines[j];
-        char *base = g_path_get_basename(path);
-        char *parent = g_path_get_dirname(path);
-        gboolean is_dir = g_file_test(path, G_FILE_TEST_IS_DIR);
-        char *description = g_strdup_printf("File · %s", parent);
-        add_result(mode, u_result_new(U_PROVIDER_FILES, base, description,
-                                      is_dir ? "folder" : "text-x-generic", 500,
-                                      U_ACTION_OPEN_PATH, path, path));
-        g_free(description);
-        g_free(parent);
-        g_free(base);
-      }
-      g_strfreev(lines);
-    }
-    g_free(output);
-    g_ptr_array_free(args, TRUE);
-    g_free(root);
-  }
-  g_hash_table_destroy(seen);
-  g_strfreev(root_list);
-  g_free(roots);
-}
-
-static void add_clipboard(UMode *mode, const char *query,
-                          const char *folded_query) {
-  if (!mode->config.clipboard || mode->intent != U_INTENT_CLIPBOARD) {
-    return;
-  }
-  const char *term = query;
-  if (g_str_has_prefix(folded_query, "clipboard ")) {
-    term = query + 10;
-  } else if (g_str_has_prefix(folded_query, "clip ")) {
-    term = query + 5;
-  }
-  char *search = g_strdup(term);
-  g_strstrip(search);
-  char *search_folded = fold_string(search);
-  g_free(search);
-  if (!*search_folded) {
-    g_free(search_folded);
-    return;
-  }
-  const char *cliphist = g_find_program_in_path("cliphist");
-  if (!cliphist) {
-    g_free(search_folded);
-    return;
-  }
-  const char *argv[] = {cliphist, "list", NULL};
-  char *output = NULL;
-  if (!run_capture(argv, &output, NULL)) {
-    g_free(output);
-    return;
-  }
-  char **lines = g_strsplit(output ? output : "", "\n", -1);
-  int added = 0;
-  for (int i = 0; lines[i] && added < mode->config.clipboard_max_results; i++) {
-    char *tab = strchr(lines[i], '\t');
-    if (!tab) {
-      continue;
-    }
-    *tab = '\0';
-    const char *preview = tab + 1;
-    if (!*preview || !*lines[i]) {
-      continue;
-    }
-    char *folded = fold_string(preview);
-    int score = match_score_folded(folded, folded, search_folded);
-    g_free(folded);
-    if (score == 0) {
-      continue;
-    }
-    char *title = g_strdup(preview);
-    if (strlen(title) > 90) {
-      title[90] = '\0';
-    }
-    add_result(mode, u_result_new(U_PROVIDER_CLIPBOARD, title,
-                                  "Clipboard · cliphist", "edit-paste", 450,
-                                  U_ACTION_CLIPBOARD, lines[i], preview));
-    g_free(title);
-    added++;
-  }
-  g_strfreev(lines);
-  g_free(output);
-  g_free(search_folded);
-}
-
 static void add_bookmarks(UMode *mode, const char *folded_query) {
   if (!mode->config.bookmarks || !*folded_query) {
     return;
@@ -732,26 +670,143 @@ static void add_bookmarks(UMode *mode, const char *folded_query) {
   }
 }
 
-static void rebuild_results(UMode *mode) {
-  g_ptr_array_set_size(mode->results, 0);
+static void clipboard_process_done(const char *stdout_text,
+                                   const char *stderr_text, int exit_status,
+                                   gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
+  ClipboardJob *job = data;
+  UMode *mode = job->mode;
+  if (mode) {
+    mode->clipboard_loading = FALSE;
+    if (success && stdout_text) {
+      g_ptr_array_set_size(mode->clipboard_entries, 0);
+      guint entry_limit =
+          MAX((guint)mode->config.clipboard_max_results * 20, 50u);
+      char **lines = g_strsplit(stdout_text, "\n", -1);
+      for (int i = 0; lines[i] && mode->clipboard_entries->len < entry_limit;
+           i++) {
+        char *tab = strchr(lines[i], '\t');
+        if (!tab) {
+          continue;
+        }
+        *tab = '\0';
+        const char *preview = tab + 1;
+        if (!*preview || !*lines[i]) {
+          continue;
+        }
+        UClipboardEntry *entry = g_new0(UClipboardEntry, 1);
+        entry->id = g_strdup(lines[i]);
+        entry->preview = g_strdup(preview);
+        entry->folded = fold_string(preview);
+        g_ptr_array_add(mode->clipboard_entries, entry);
+      }
+      g_strfreev(lines);
+    }
+    mode->clipboard_loaded_at = g_get_monotonic_time();
+    if (mode->query && *mode->query) {
+      rebuild_local_results(mode);
+      merge_results(mode);
+      schedule_reload(mode);
+    }
+  }
+  remove_job(mode, job);
+  g_free(job);
+}
+
+static void ensure_clipboard_cache(UMode *mode) {
+  if (!mode || !mode->config.clipboard || mode->clipboard_loading) {
+    return;
+  }
+  gint64 now = g_get_monotonic_time();
+  if (mode->clipboard_loaded_at != 0 &&
+      now - mode->clipboard_loaded_at <
+          (gint64)mode->config.clipboard_cache_seconds * G_USEC_PER_SEC) {
+    return;
+  }
+  char *cliphist = g_find_program_in_path("cliphist");
+  if (!cliphist || !mode->life_cancellable) {
+    g_free(cliphist);
+    return;
+  }
+  const char *argv[] = {cliphist, "list", NULL};
+  ClipboardJob *job = g_new0(ClipboardJob, 1);
+  job->mode = mode;
+  mode->clipboard_loading = TRUE;
+  g_ptr_array_add(mode->jobs, job);
+  u_process_run(argv, mode->life_cancellable, clipboard_process_done, job);
+  g_free(cliphist);
+}
+
+static void add_clipboard(UMode *mode, const char *query,
+                          const char *folded_query) {
+  if (!mode->config.clipboard) {
+    return;
+  }
+  gboolean explicit = mode->analysis.explicit_provider == U_PROVIDER_CLIPBOARD;
+  if (!explicit && !mode->config.clipboard_automatic) {
+    return;
+  }
+  if (!*folded_query || strlen(folded_query) < 3) {
+    return;
+  }
+  ensure_clipboard_cache(mode);
+  if (mode->clipboard_entries->len == 0) {
+    return;
+  }
+  const char *term = query;
+  if (explicit && g_str_has_prefix(folded_query, "clipboard ")) {
+    term = query + 10;
+  } else if (explicit && g_str_has_prefix(folded_query, "clip ")) {
+    term = query + 5;
+  }
+  char *search = g_strdup(term);
+  g_strstrip(search);
+  char *search_folded = fold_string(search);
+  g_free(search);
+  if (!*search_folded) {
+    g_free(search_folded);
+    return;
+  }
+  int added = 0;
+  for (guint i = 0;
+       i < mode->clipboard_entries->len &&
+       added < mode->config.clipboard_max_results;
+       i++) {
+    UClipboardEntry *entry = g_ptr_array_index(mode->clipboard_entries, i);
+    int score = match_score_folded(entry->folded, entry->folded, search_folded);
+    if (score == 0) {
+      continue;
+    }
+    if (!explicit) {
+      score = MIN(score, 300);
+    }
+    char *title = g_strdup(entry->preview);
+    if (strlen(title) > 90) {
+      title[90] = '\0';
+    }
+    add_result(mode, u_result_new(U_PROVIDER_CLIPBOARD, title,
+                                  "Clipboard · cliphist", "edit-paste", score,
+                                  U_ACTION_CLIPBOARD, entry->id,
+                                  entry->preview));
+    g_free(title);
+    added++;
+  }
+  g_free(search_folded);
+}
+
+static void rebuild_local_results(UMode *mode) {
+  g_ptr_array_set_size(mode->local_results, 0);
   char *query = g_strdup(mode->query ? mode->query : "");
   char *folded = fold_string(query);
-  mode->intent = u_classify_intent(query, &mode->calc_like, &mode->path_like);
-  if (mode->intent == U_INTENT_EMPTY) {
+  if (mode->analysis.intent == U_INTENT_EMPTY) {
     add_apps(mode, folded);
     g_free(query);
     g_free(folded);
     return;
   }
-  if (mode->calc_text && mode->calc_query &&
-      g_strcmp0(mode->calc_query, query) == 0) {
-    char *description = g_strdup_printf("Calculator · %s", query);
-    add_result(mode, u_result_new(U_PROVIDER_CALC, mode->calc_text, description,
-                                  "accessories-calculator", 1000, U_ACTION_COPY,
-                                  mode->calc_text, mode->calc_text));
-    g_free(description);
-  } else if (mode->calc_like && mode->config.calculator &&
-             !g_find_program_in_path(mode->config.qalc_binary)) {
+  if (mode->analysis.calc_score >= 600 && mode->config.calculator &&
+      !g_find_program_in_path(mode->config.qalc_binary)) {
     add_result(mode, u_result_new(U_PROVIDER_CALC, "Calculator unavailable",
                                   "Calculator · install qalc (Qalculate!)",
                                   "accessories-calculator", 300,
@@ -763,17 +818,26 @@ static void rebuild_results(UMode *mode) {
   add_github(mode, query, folded);
   add_weather(mode, query, folded);
   add_bookmarks(mode, folded);
-  if (mode->path_like) {
+  if (mode->analysis.path_like) {
     add_path_result(mode, query);
   }
-  add_file_search(mode, query, folded);
   add_clipboard(mode, query, folded);
+  g_free(query);
+  g_free(folded);
+}
+
+static void merge_results(UMode *mode) {
+  g_ptr_array_set_size(mode->results, 0);
+  for (guint i = 0; i < mode->local_results->len; i++) {
+    g_ptr_array_add(mode->results, g_ptr_array_index(mode->local_results, i));
+  }
+  for (guint i = 0; i < mode->async_results->len; i++) {
+    g_ptr_array_add(mode->results, g_ptr_array_index(mode->async_results, i));
+  }
   g_ptr_array_sort(mode->results, u_result_compare);
   if (mode->results->len > (guint)mode->config.max_results) {
     g_ptr_array_set_size(mode->results, mode->config.max_results);
   }
-  g_free(query);
-  g_free(folded);
 }
 
 static gboolean reload_cb(gpointer data) {
@@ -799,63 +863,157 @@ static void sync_from_view(UMode *mode) {
   }
 }
 
-static void calc_finished(GObject *source, GAsyncResult *result, gpointer data) {
+static void calc_finished(const char *stdout_text, const char *stderr_text,
+                          int exit_status, gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
   CalcJob *job = data;
   UMode *mode = job->mode;
-  char *output = NULL;
-  GError *error = NULL;
-  gboolean ok =
-      g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, &output,
-                                           NULL, &error);
-  if (ok && mode && mode->calc_generation == job->generation && output) {
-    char *text = g_strstrip(g_strdup(output));
+  if (mode && success && mode->query_generation == job->generation &&
+      stdout_text) {
+    char *text = g_strstrip(g_strdup(stdout_text));
     if (*text && !g_str_has_prefix(text, "error") &&
         !strstr(text, "error:") && !strstr(text, "warning:")) {
-      g_free(mode->calc_text);
-      g_free(mode->calc_query);
-      mode->calc_text = text;
-      mode->calc_query = g_strdup(mode->query ? mode->query : "");
-      rebuild_results(mode);
+      char *description = g_strdup_printf("Calculator · %s", mode->query);
+      add_async_result(mode,
+                       u_result_new(U_PROVIDER_CALC, text, description,
+                                    "accessories-calculator", 1000,
+                                    U_ACTION_COPY, text, text));
+      g_free(description);
+      merge_results(mode);
       schedule_reload(mode);
-    } else {
-      g_free(text);
     }
+    g_free(text);
   }
-  if (error) {
-    g_error_free(error);
-  }
-  if (mode) {
-    g_ptr_array_remove(mode->jobs, job);
-  }
-  g_free(output);
+  remove_job(mode, job);
   g_free(job);
 }
 
-static void spawn_calc(UMode *mode, const char *query) {
-  if (!mode->config.calculator || !mode->calc_like || !*query) {
+static void start_calc(UMode *mode) {
+  if (!mode->config.calculator || mode->analysis.calc_score < 600 ||
+      !mode->query || !*mode->query) {
     return;
   }
   if (!g_find_program_in_path(mode->config.qalc_binary)) {
     return;
   }
   const char *argv[] = {mode->config.qalc_binary, "-t", "+u8", "-s",
-                        "update_exchange_rates 1days", query, NULL};
-  GError *error = NULL;
-  GSubprocess *process = g_subprocess_newv(
-      argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
-      &error);
-  if (!process) {
-    if (error) {
-      g_error_free(error);
-    }
-    return;
-  }
+                        "update_exchange_rates 1days", mode->query, NULL};
   CalcJob *job = g_new0(CalcJob, 1);
   job->mode = mode;
-  job->generation = ++mode->calc_generation;
+  job->generation = mode->query_generation;
   g_ptr_array_add(mode->jobs, job);
-  g_subprocess_communicate_utf8_async(process, NULL, NULL, calc_finished, job);
-  g_object_unref(process);
+  u_process_run(argv, mode->query_cancellable, calc_finished, job);
+}
+
+static void files_finished(const char *stdout_text, const char *stderr_text,
+                           int exit_status, gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
+  FileJob *job = data;
+  UMode *mode = job->mode;
+  if (mode && success && mode->query_generation == job->generation &&
+      stdout_text) {
+    GHashTable *seen =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    char **lines = g_strsplit(stdout_text, "\n", -1);
+    for (int i = 0; lines[i]; i++) {
+      if (!*lines[i] || g_hash_table_contains(seen, lines[i])) {
+        continue;
+      }
+      g_hash_table_add(seen, g_strdup(lines[i]));
+      const char *path = lines[i];
+      char *base = g_path_get_basename(path);
+      char *parent = g_path_get_dirname(path);
+      gboolean is_dir = g_file_test(path, G_FILE_TEST_IS_DIR);
+      char *description = g_strdup_printf("File · %s", parent);
+      add_async_result(mode,
+                       u_result_new(U_PROVIDER_FILES, base, description,
+                                    is_dir ? "folder" : "text-x-generic", 500,
+                                    U_ACTION_OPEN_PATH, path, path));
+      g_free(description);
+      g_free(parent);
+      g_free(base);
+    }
+    g_strfreev(lines);
+    g_hash_table_destroy(seen);
+    merge_results(mode);
+    schedule_reload(mode);
+  }
+  remove_job(mode, job);
+  g_free(job);
+}
+
+static void start_files(UMode *mode) {
+  if (!mode->config.files || mode->analysis.path_like ||
+      !mode->query || strlen(mode->query) < 3 ||
+      (mode->analysis.file_score < 100 && mode->analysis.app_score < 500)) {
+    return;
+  }
+  char *fd = g_find_program_in_path("fd");
+  if (!fd) {
+    return;
+  }
+  char *roots =
+      g_strdup(mode->config.file_roots ? mode->config.file_roots : "~");
+  char **root_list = g_strsplit_set(roots, ":;", -1);
+  GPtrArray *args = g_ptr_array_new();
+  g_ptr_array_add(args, (gpointer)fd);
+  g_ptr_array_add(args, (gpointer)"--color=never");
+  g_ptr_array_add(args, (gpointer)"--hidden");
+  g_ptr_array_add(args, (gpointer)"--fixed-strings");
+  char max_results[16];
+  char max_depth[16];
+  g_snprintf(max_results, sizeof(max_results), "%d",
+             mode->config.file_max_results);
+  g_snprintf(max_depth, sizeof(max_depth), "%d", mode->config.file_max_depth);
+  g_ptr_array_add(args, (gpointer)"--max-results");
+  g_ptr_array_add(args, max_results);
+  g_ptr_array_add(args, (gpointer)"--max-depth");
+  g_ptr_array_add(args, max_depth);
+  g_ptr_array_add(args, (gpointer)"--exclude");
+  g_ptr_array_add(args, (gpointer)".git");
+  g_ptr_array_add(args, (gpointer)"--exclude");
+  g_ptr_array_add(args, (gpointer)"node_modules");
+  g_ptr_array_add(args, (gpointer)"--exclude");
+  g_ptr_array_add(args, (gpointer)".cache");
+  g_ptr_array_add(args, (gpointer)"--");
+  g_ptr_array_add(args, (gpointer)mode->query);
+  guint root_start = args->len;
+  guint root_count = 0;
+  for (int i = 0; root_list[i]; i++) {
+    if (!*root_list[i]) {
+      continue;
+    }
+    char *root = u_expand_path(root_list[i]);
+    if (g_file_test(root, G_FILE_TEST_IS_DIR)) {
+      g_ptr_array_add(args, root);
+      root_count++;
+    } else {
+      g_free(root);
+    }
+  }
+  g_ptr_array_add(args, NULL);
+  if (root_count == 0) {
+    g_ptr_array_free(args, TRUE);
+    g_strfreev(root_list);
+    g_free(roots);
+    g_free(fd);
+    return;
+  }
+  FileJob *job = g_new0(FileJob, 1);
+  job->mode = mode;
+  job->generation = mode->query_generation;
+  g_ptr_array_add(mode->jobs, job);
+  u_process_run((const char *const *)args->pdata, mode->query_cancellable,
+                files_finished, job);
+  for (guint i = root_start; i < args->len - 1; i++) {
+    g_free(g_ptr_array_index(args, i));
+  }
+  g_ptr_array_free(args, TRUE);
+  g_strfreev(root_list);
+  g_free(roots);
+  g_free(fd);
 }
 
 static gboolean copy_to_clipboard(const char *text) {
@@ -891,6 +1049,7 @@ static gboolean copy_to_clipboard(const char *text) {
     if (error) {
       g_error_free(error);
     }
+    g_free((gpointer)program);
     return FALSE;
   }
   gboolean ok = g_subprocess_communicate_utf8(process, text, NULL, NULL, NULL,
@@ -899,6 +1058,7 @@ static gboolean copy_to_clipboard(const char *text) {
     g_error_free(error);
   }
   g_object_unref(process);
+  g_free((gpointer)program);
   return ok;
 }
 
@@ -957,16 +1117,25 @@ static void launch_app(const char *id) {
 }
 
 static void execute_clipboard(const char *id) {
-  const char *cliphist = g_find_program_in_path("cliphist");
+  char *cliphist = g_find_program_in_path("cliphist");
   if (!cliphist || !id) {
+    g_free(cliphist);
     return;
   }
   const char *argv[] = {cliphist, "decode", id, NULL};
+  GError *error = NULL;
   char *output = NULL;
-  if (run_capture(argv, &output, NULL)) {
+  if (!g_spawn_sync(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,
+                    &output, NULL, NULL, &error)) {
+    if (error) {
+      g_error_free(error);
+    }
+  }
+  if (output) {
     copy_to_clipboard(output);
   }
   g_free(output);
+  g_free(cliphist);
 }
 
 static void execute_result(UMode *mode, UResult *result, gboolean copy_only) {
@@ -1008,13 +1177,18 @@ static gboolean update_query(UMode *mode, const char *input) {
   }
   g_free(mode->query);
   mode->query = g_strdup(input ? input : "");
-  g_free(mode->calc_text);
-  mode->calc_text = NULL;
-  g_free(mode->calc_query);
-  mode->calc_query = NULL;
-  mode->calc_generation++;
-  rebuild_results(mode);
-  spawn_calc(mode, mode->query);
+  mode->query_generation++;
+  if (mode->query_cancellable) {
+    g_cancellable_cancel(mode->query_cancellable);
+    g_object_unref(mode->query_cancellable);
+  }
+  mode->query_cancellable = g_cancellable_new();
+  g_ptr_array_set_size(mode->async_results, 0);
+  u_analyze_query(mode->query, &mode->analysis);
+  rebuild_local_results(mode);
+  start_calc(mode);
+  start_files(mode);
+  merge_results(mode);
   return TRUE;
 }
 
@@ -1025,14 +1199,22 @@ static int universal_init(Mode *sw) {
   UMode *mode = g_new0(UMode, 1);
   u_config_init(&mode->config);
   u_config_load(&mode->config, g_getenv("ROFI_UNIVERSAL_CONFIG"));
-  mode->results = g_ptr_array_new_with_free_func(u_result_free);
+  mode->results = g_ptr_array_new();
+  mode->local_results = g_ptr_array_new_with_free_func(u_result_free);
+  mode->async_results = g_ptr_array_new_with_free_func(u_result_free);
   mode->apps = g_ptr_array_new_with_free_func(app_free);
   mode->bookmarks = g_ptr_array_new_with_free_func(bookmark_free);
+  mode->clipboard_entries =
+      g_ptr_array_new_with_free_func(clipboard_entry_free);
   mode->jobs = g_ptr_array_new();
+  mode->life_cancellable = g_cancellable_new();
+  mode->query_cancellable = g_cancellable_new();
   mode->query = g_strdup("");
+  u_analyze_query(mode->query, &mode->analysis);
   load_apps(mode);
-  load_bookmarks(mode);
-  rebuild_results(mode);
+  rebuild_local_results(mode);
+  merge_results(mode);
+  start_bookmarks(mode);
   mode_set_private_data(sw, mode);
   return TRUE;
 }
@@ -1046,16 +1228,25 @@ static void universal_destroy(Mode *sw) {
     g_source_remove(mode->reload_source);
   }
   for (guint i = 0; i < mode->jobs->len; i++) {
-    CalcJob *job = g_ptr_array_index(mode->jobs, i);
-    job->mode = NULL;
+    UMode **owner = g_ptr_array_index(mode->jobs, i);
+    *owner = NULL;
+  }
+  if (mode->query_cancellable) {
+    g_cancellable_cancel(mode->query_cancellable);
+    g_object_unref(mode->query_cancellable);
+  }
+  if (mode->life_cancellable) {
+    g_cancellable_cancel(mode->life_cancellable);
+    g_object_unref(mode->life_cancellable);
   }
   g_ptr_array_free(mode->jobs, TRUE);
   g_ptr_array_free(mode->results, TRUE);
+  g_ptr_array_free(mode->local_results, TRUE);
+  g_ptr_array_free(mode->async_results, TRUE);
   g_ptr_array_free(mode->apps, TRUE);
   g_ptr_array_free(mode->bookmarks, TRUE);
+  g_ptr_array_free(mode->clipboard_entries, TRUE);
   g_free(mode->query);
-  g_free(mode->calc_text);
-  g_free(mode->calc_query);
   u_config_clear(&mode->config);
   g_free(mode);
   mode_set_private_data(sw, NULL);

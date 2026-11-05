@@ -50,11 +50,28 @@ typedef struct {
 } UResult;
 
 typedef struct {
+  UIntent intent;
+  UProvider explicit_provider;
+  int calc_score;
+  int app_score;
+  int web_score;
+  int file_score;
+  int clipboard_score;
+  int dictionary_score;
+  int github_score;
+  int weather_score;
+  gboolean path_like;
+  gboolean url_like;
+} UQueryAnalysis;
+
+typedef struct {
   gboolean applications;
   gboolean calculator;
   gboolean web;
   gboolean files;
   gboolean clipboard;
+  gboolean clipboard_automatic;
+  int clipboard_cache_seconds;
   gboolean dictionary;
   gboolean github;
   gboolean weather;
@@ -79,8 +96,11 @@ const char *u_provider_name(UProvider provider);
 const char *u_provider_icon(UProvider provider);
 int u_intent_boost(UIntent intent, UProvider provider);
 
+void u_analyze_query(const char *query, UQueryAnalysis *analysis);
 UIntent u_classify_intent(const char *query, gboolean *calc_like,
                           gboolean *path_like);
+int u_provider_relevance(const UQueryAnalysis *analysis, UProvider provider);
+int u_score_signals(int match, int relevance, gboolean local);
 gboolean u_query_is_url(const char *query);
 gboolean u_query_is_path(const char *query);
 gboolean u_query_looks_calculable(const char *query);

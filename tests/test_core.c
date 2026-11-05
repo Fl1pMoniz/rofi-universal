@@ -9,8 +9,113 @@ static void test_calculable(void) {
   g_assert_true(u_query_looks_calculable("500 EUR to USD"));
   g_assert_true(u_query_looks_calculable("10 km to miles"));
   g_assert_true(u_query_looks_calculable("sqrt(16)"));
+  g_assert_true(u_query_looks_calculable("50%"));
+  g_assert_true(u_query_looks_calculable("2^10"));
+  g_assert_true(u_query_looks_calculable("1/2"));
+  g_assert_true(u_query_looks_calculable("150 to hex"));
+  g_assert_true(u_query_looks_calculable("10 in binary"));
   g_assert_false(u_query_looks_calculable("firefox"));
   g_assert_false(u_query_looks_calculable("hyprland configuration"));
+  g_assert_false(u_query_looks_calculable("python3"));
+  g_assert_false(u_query_looks_calculable("firefox 123"));
+  g_assert_false(u_query_looks_calculable("2 monitors"));
+  g_assert_false(u_query_looks_calculable("hyprland 2 monitor"));
+  g_assert_false(u_query_looks_calculable("application version 2.1"));
+}
+
+
+static void test_analysis(void) {
+  UQueryAnalysis analysis;
+  u_analyze_query("python3", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.app_score, >=, 500);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_APP);
+
+  u_analyze_query("25 * 18", &analysis);
+  g_assert_cmpint(analysis.calc_score, >=, 600);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_CALC);
+
+  u_analyze_query("firefox 123", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_WEB);
+
+  u_analyze_query("2 monitors", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+
+  u_analyze_query("hyprland 2 monitor", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+
+  u_analyze_query("500 EUR to USD", &analysis);
+  g_assert_cmpint(analysis.calc_score, >=, 600);
+
+  u_analyze_query("10 km to miles", &analysis);
+  g_assert_cmpint(analysis.calc_score, >=, 600);
+
+  u_analyze_query("define ephemeral", &analysis);
+  g_assert_cmpint(analysis.dictionary_score, >=, 600);
+  g_assert_cmpint(analysis.explicit_provider, ==, U_PROVIDER_DICTIONARY);
+
+  u_analyze_query("weather in Tokyo", &analysis);
+  g_assert_cmpint(analysis.weather_score, >=, 600);
+  g_assert_cmpint(analysis.explicit_provider, ==, U_PROVIDER_WEATHER);
+
+  u_analyze_query("github repo", &analysis);
+  g_assert_cmpint(analysis.github_score, >=, 600);
+  g_assert_cmpint(analysis.explicit_provider, ==, U_PROVIDER_GITHUB);
+
+  u_analyze_query("~/Downloads/report.pdf", &analysis);
+  g_assert_true(analysis.path_like);
+  g_assert_cmpint(analysis.file_score, >=, 600);
+
+  u_analyze_query("~/Downloads/report file.pdf", &analysis);
+  g_assert_true(analysis.path_like);
+
+  g_assert_false(u_query_is_path("1/2"));
+  g_assert_true(u_query_is_path("foo/bar"));
+
+  u_analyze_query("https://example.com", &analysis);
+  g_assert_true(analysis.url_like);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_URL);
+
+  u_analyze_query("café", &analysis);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_APP);
+
+  u_analyze_query("日本語", &analysis);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_APP);
+
+  u_analyze_query("clip github", &analysis);
+  g_assert_cmpint(analysis.clipboard_score, >=, 600);
+  g_assert_cmpint(analysis.explicit_provider, ==, U_PROVIDER_CLIPBOARD);
+
+  u_analyze_query("linux hyprland configuration", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.web_score, >=, 600);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_WEB);
+
+  u_analyze_query("python", &analysis);
+  g_assert_cmpint(analysis.app_score, >=, 500);
+  g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_APPS), >=,
+                  u_provider_relevance(&analysis, U_PROVIDER_WEB));
+}
+
+static void test_provider_relevance(void) {
+  UQueryAnalysis analysis;
+  u_analyze_query("github repo", &analysis);
+  g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_GITHUB), >,
+                  u_provider_relevance(&analysis, U_PROVIDER_WEB));
+
+  u_analyze_query("25 * 18", &analysis);
+  g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_CALC), >,
+                  u_provider_relevance(&analysis, U_PROVIDER_APPS));
+  g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_CALC), >,
+                  u_provider_relevance(&analysis, U_PROVIDER_WEB));
+
+  u_analyze_query("~/Downloads/report.pdf", &analysis);
+  g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_FILES), >,
+                  u_provider_relevance(&analysis, U_PROVIDER_WEB));
+
+  g_assert_cmpint(u_score_signals(500, 100, TRUE), >,
+                  u_score_signals(500, 100, FALSE));
 }
 
 static void test_intent(void) {
@@ -32,6 +137,8 @@ static void test_intent(void) {
   g_assert_true(path);
   g_assert_cmpint(u_classify_intent("https://example.com", &calc, &path), ==,
                   U_INTENT_URL);
+  g_assert_cmpint(u_classify_intent("1/2", &calc, &path), ==, U_INTENT_CALC);
+  g_assert_false(path);
   g_assert_cmpint(u_classify_intent("clip github", &calc, &path), ==,
                   U_INTENT_CLIPBOARD);
   g_assert_cmpint(u_classify_intent("weather Tokyo", &calc, &path), ==,
@@ -85,6 +192,8 @@ static void test_config(void) {
   g_assert_cmpint(config.max_results, ==, 40);
   g_assert_cmpstr(config.web_engine, ==, "duckduckgo");
   g_assert_true(config.calculator);
+  g_assert_false(config.clipboard_automatic);
+  g_assert_cmpint(config.clipboard_cache_seconds, ==, 30);
   u_config_clear(&config);
 
   char *path = NULL;
@@ -96,7 +205,8 @@ static void test_config(void) {
   const char *content =
       "[general]\nmax_results=12\nweb_engine=google\n"
       "[providers]\ncalculator=false\nclipboard=false\n"
-      "[files]\nmax_depth=2\nroots=/tmp\n";
+      "[files]\nmax_depth=2\nroots=/tmp\n"
+      "[clipboard]\nautomatic=true\ncache_seconds=5\nmax_results=3\n";
   g_assert_true(g_file_set_contents(path, content, -1, &error));
   g_assert_no_error(error);
   u_config_init(&config);
@@ -108,14 +218,24 @@ static void test_config(void) {
   g_assert_true(config.web);
   g_assert_cmpint(config.file_max_depth, ==, 2);
   g_assert_cmpstr(config.file_roots, ==, "/tmp");
+  g_assert_true(config.clipboard_automatic);
+  g_assert_cmpint(config.clipboard_cache_seconds, ==, 5);
+  g_assert_cmpint(config.clipboard_max_results, ==, 3);
   u_config_clear(&config);
   g_remove(path);
   g_free(path);
+
+  u_config_init(&config);
+  g_assert_false(u_config_load(&config, "/definitely/not/a/rofi-universal/config.ini"));
+  g_assert_cmpint(config.max_results, ==, 40);
+  u_config_clear(&config);
 }
 
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
   g_test_add_func("/core/calculable", test_calculable);
+  g_test_add_func("/core/analysis", test_analysis);
+  g_test_add_func("/core/provider-relevance", test_provider_relevance);
   g_test_add_func("/core/intent", test_intent);
   g_test_add_func("/core/urls", test_urls);
   g_test_add_func("/core/ranking", test_ranking);
