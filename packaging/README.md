@@ -9,12 +9,12 @@ downstream review use the same build description as the project.
 Release archives are generated from the immutable `vVERSION` tag with:
 
 ```sh
-scripts/make-source-tarball.sh VERSION /tmp/rofi-universal-VERSION.tar.gz
+scripts/make-source-tarball.sh VERSION /tmp/rofi-universal-VERSION.tar
 ```
 
 The script excludes `packaging/` so the checksum can be recorded in the
 PKGBUILD without changing the archive. The resulting tarball is attached to the
-GitHub release as `rofi-universal-VERSION.tar.gz`. Both the RPM spec and the
+GitHub release as `rofi-universal-VERSION.tar`. Both the RPM spec and the
 PKGBUILD consume that same asset.
 
 To update packaging for a release:

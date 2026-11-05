@@ -5,7 +5,7 @@ Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
 License:        MIT
 URL:            https://github.com/Fl1pMoniz/rofi-universal
-Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar.gz
+Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar
 
 BuildRequires:  gcc
 BuildRequires:  meson

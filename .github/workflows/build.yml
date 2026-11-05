@@ -84,21 +84,18 @@ jobs:
       - name: Install packaging dependencies
         run: >
           dnf install -y
-          gcc git glib2-devel cairo-devel meson ninja-build pkg-config
-          rofi-devel rpm-build rpmdevtools python3 xorg-x11-server-Xvfb
-          xorg-x11-xauth
+          gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
+          rpm-build rpmdevtools python3 xorg-x11-server-Xvfb xorg-x11-xauth
       - name: Build RPM and verify source checksum
         run: |
           cd "$GITHUB_WORKSPACE"
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
-          actual=$(scripts/make-source-tarball.sh "$version" "/tmp/rofi-universal-$version.tar.gz" | awk '{print $1}')
-          echo "expected=$expected actual=$actual"
-          tar -tzf "/tmp/rofi-universal-$version.tar.gz" | sort | tail -80
+          actual=$(scripts/make-source-tarball.sh "$version" "/tmp/rofi-universal-$version.tar" | awk '{print $1}')
           test -n "$expected"
           test "$actual" = "$expected"
           rpmdev-setuptree
-          cp "/tmp/rofi-universal-$version.tar.gz" "$HOME/rpmbuild/SOURCES/"
+          cp "/tmp/rofi-universal-$version.tar" "$HOME/rpmbuild/SOURCES/"
           rpmbuild -ba packaging/rofi-universal.spec
           rpm -qip "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
           rpm -qlp "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
@@ -137,8 +134,8 @@ jobs:
           expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
           mkdir -p /tmp/srcdest
           chown -R builder:builder /tmp/srcdest
-          su builder -c "cd '$GITHUB_WORKSPACE' && scripts/make-source-tarball.sh '$version' /tmp/srcdest/rofi-universal-$version.tar.gz"
-          actual=$(sha256sum /tmp/srcdest/rofi-universal-"$version".tar.gz | awk '{print $1}')
+          su builder -c "cd '$GITHUB_WORKSPACE' && scripts/make-source-tarball.sh '$version' /tmp/srcdest/rofi-universal-$version.tar"
+          actual=$(sha256sum /tmp/srcdest/rofi-universal-"$version".tar | awk '{print $1}')
           test -n "$expected"
           test "$actual" = "$expected"
           su builder -c "cd '$GITHUB_WORKSPACE/packaging' && SRCDEST=/tmp/srcdest makepkg --noconfirm"

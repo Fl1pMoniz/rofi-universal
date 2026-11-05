@@ -15,6 +15,7 @@ meson-private/
 meson-info/
 
 # Release source archives
+rofi-universal-*.tar
 rofi-universal-*.tar.gz
 
 # Packaging output

@@ -4,7 +4,7 @@
 # do not change the archive consumed by the package builds.
 set -eu
 version=${1:?usage: $0 VERSION [OUTPUT]}
-output=${2:-"$PWD/rofi-universal-$version.tar.gz"}
+output=${2:-"$PWD/rofi-universal-$version.tar"}
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 list=$(mktemp)
@@ -17,11 +17,11 @@ find . -type f \
     ! -path './build-*/*' \
     ! -name '*.o' \
     ! -name '*.so' \
+    ! -name '*.tar' \
     ! -name '*.tar.gz' \
     -printf '%P\0' | LC_ALL=C sort -z >"$list"
 test -s "$list"
-tar --null --files-from="$list" --format=gnu --sort=name \
+tar --null --files-from="$list" --format=ustar --sort=name \
     --mtime=@1793836800 --owner=0 --group=0 --numeric-owner \
-    --transform="s,^,rofi-universal-$version/," -cf - |
-    gzip -n >"$output"
+    --transform="s,^,rofi-universal-$version/," -cf "$output"
 sha256sum "$output"
