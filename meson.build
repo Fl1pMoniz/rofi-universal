@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.5.0',
+  version: '0.6.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -42,6 +42,14 @@ test_core = executable(
   include_directories: include_directories('src'),
 )
 test('core', test_core)
+
+benchmark_core = executable(
+  'benchmark-core',
+  ['tests/benchmark_core.c', 'src/universal.c', 'src/query.c'],
+  dependencies: [glib],
+  include_directories: include_directories('src'),
+  build_by_default: false,
+)
 
 test_process = executable(
   'test-process',

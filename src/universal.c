@@ -32,6 +32,16 @@ void u_result_free(gpointer data) {
   g_free(result);
 }
 
+char *u_result_display_text(const UResult *result) {
+  if (!result) {
+    return g_strdup("");
+  }
+  if (result->description && *result->description) {
+    return g_strdup_printf("%s  ·  %s", result->title, result->description);
+  }
+  return g_strdup(result->title);
+}
+
 void u_result_set_dedup_key(UResult *result, const char *key) {
   if (!result) {
     return;
@@ -142,6 +152,16 @@ const char *u_provider_icon(UProvider provider) {
 
 char *u_url_encode(const char *text) {
   return g_uri_escape_string(text ? text : "", NULL, TRUE);
+}
+
+char *u_normalize_url(const char *text) {
+  if (!text || !*text) {
+    return g_strdup("");
+  }
+  if (strstr(text, "://")) {
+    return g_strdup(text);
+  }
+  return g_strdup_printf("https://%s", text);
 }
 
 const char *u_web_engine_template(const char *engine) {

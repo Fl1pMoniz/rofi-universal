@@ -18,6 +18,9 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 - **Independent provider relevance scoring** with simple, maintainable rules:
   intents are no longer exclusive, so one query can produce useful app, file,
   calculator, web and clipboard results at the same time.
+- **Clear textual result descriptions** identify provider and action, such as
+  `File · open · ~/Downloads` or `Calculator · copy result`, without custom
+  markup or a mandatory theme.
 - **Applications** from the freedesktop desktop-entry database, matching names,
   generic names, keywords, desktop IDs and executables. A query may start with an
   application name (`steam games`) without letting every catalogue entry outrank
@@ -25,8 +28,9 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 - **Calculator** through `qalc` from Qalculate!: arithmetic, equations,
   percentages, units and currency conversion (`500 EUR to USD`, `10 km to miles`).
 - **Web search** with DuckDuckGo, Google, Brave, Bing, Startpage or a custom URL
-  template; supports URLs and `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`,
-  `!define`, `!arch`, `!man`, `!docs` and `!pkg` shortcuts.
+  template; supports URLs, bare common domains such as `github.com/rofi`, and
+  `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`, `!define`, `!arch`, `!man`,
+  `!docs` and `!pkg` shortcuts.
 - **Files** through direct path expansion and asynchronous optional `fd` search.
   Filename matches rank above parent-path matches, and glob patterns such as
   `*.png` are supported by `fd`.
@@ -64,7 +68,8 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
 interaction and result presentation; v0.3 added inline weather, v0.4 improved
-ranking and search categories, and v0.5 adds inline dictionary definitions.
+ranking and search categories, v0.5 added inline dictionary definitions, and
+v0.6 improves URL recognition and action-oriented result descriptions.
 
 ## Requirements
 
@@ -302,6 +307,9 @@ and are not queried.
 | `github owner/repository` | Direct repository opening plus search actions |
 | `weather in Tokyo` | Inline weather when available, plus an external forecast action |
 | `hyprland configuration` | Web search |
+| `terminal commands` | Web search, not automatic terminal launch |
+| `firefox extensions` | Web search, with Firefox app available |
+| `github.com/rofi` | Open the URL with HTTPS |
 | `!yt linux customization` | YouTube search |
 | `!docs glib main loop` | DevDocs search |
 | `clip github` | Search clipboard history |
@@ -332,6 +340,7 @@ tests/
   test_fetch.c   HTTP fetcher selection and command tests
   test_dictionary.c Dictionary URL, JSON parsing and cache tests
   test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
+  benchmark_core.c Optional query-analysis and app-matching benchmark
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the provider and async
@@ -409,6 +418,17 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 
 Then try the example queries above.
 
+A small deterministic benchmark target is available separately from the test
+suite:
+
+```sh
+meson compile -C build benchmark-core
+./build/benchmark-core
+```
+
+It measures repeated query analysis and application matching on the local
+machine; timings are environment-specific and are not used as CI gates.
+
 ## Troubleshooting
 
 **`Mode 'universal' not found`**
@@ -470,6 +490,8 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   operation, not silently parsed. The clipboard-decode action still uses a
   separate synchronous clipboard helper and can briefly buffer a large selected
   clipboard item.
+- A reveal-in-file-manager secondary action is not implemented; `Shift+Enter`
+  retains its existing copy behavior on files.
 
 ## License
 

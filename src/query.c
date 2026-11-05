@@ -222,12 +222,64 @@ int u_intent_boost(UIntent intent, UProvider provider) {
   return u_provider_relevance(&analysis, provider);
 }
 
+static gboolean bare_domain_url(const char *query) {
+  static const char *tlds[] = {
+      "com", "org", "net", "edu", "gov", "mil", "int", "io", "dev", "co",
+      "app", "xyz", "info", "online", "site", "tech", "cloud", "blog",
+      "news", "store", "shop", "wiki", "tv", "me", "ly", "gl", "gg", "fm",
+      "to", "eu", "de", "fr", "uk", "us", "ca", "au", "jp", "cn",
+      "br", "pt", "es", "it", "nl", "se", "no", "dk", "fi", "ch", "at",
+      "be", "ie", "nz", "za", "mx", "kr", "tr", "ru", "ar", NULL};
+  if (!query || !*query || !strchr(query, '.') ||
+      strpbrk(query, " \t\r\n@") != NULL) {
+    return FALSE;
+  }
+  const char *end = strpbrk(query, "/:?#");
+  size_t host_length = end ? (size_t)(end - query) : strlen(query);
+  if (host_length < 3 || host_length > 253) {
+    return FALSE;
+  }
+  char *host = g_strndup(query, host_length);
+  gboolean valid = TRUE;
+  const char *label = host;
+  const char *last_dot = NULL;
+  for (const char *p = host; ; p++) {
+    if (*p == '.' || *p == '\0') {
+      if (p == label || p[-1] == '-') {
+        valid = FALSE;
+        break;
+      }
+      if (*p == '\0') {
+        break;
+      }
+      last_dot = p;
+      label = p + 1;
+    } else if (!g_ascii_isalnum(*p) && *p != '-') {
+      valid = FALSE;
+      break;
+    } else if (p == label && *p == '-') {
+      valid = FALSE;
+      break;
+    }
+  }
+  if (!valid || !last_dot || last_dot == host) {
+    g_free(host);
+    return FALSE;
+  }
+  char *tld = g_ascii_strdown(last_dot + 1, -1);
+  gboolean known = g_strv_contains(tlds, tld);
+  g_free(tld);
+  g_free(host);
+  return known;
+}
+
 gboolean u_query_is_url(const char *query) {
   if (!query) {
     return FALSE;
   }
   return g_regex_match_simple("^[A-Za-z][A-Za-z0-9+.-]*://", query, 0, 0) ||
-         g_regex_match_simple("^www\\.", query, G_REGEX_CASELESS, 0);
+         g_regex_match_simple("^www\\.", query, G_REGEX_CASELESS, 0) ||
+         bare_domain_url(query);
 }
 
 gboolean u_query_is_path(const char *query) {
@@ -308,7 +360,9 @@ static gboolean looks_like_web_intent(const char *folded) {
                          "features", "configuration", "config", "tutorial",
                          "install", "setup", "troubleshoot", "error", "fix",
                          "examples", "alternatives", "comparison", "review",
-                         "reference", "manual", "download", "api", NULL};
+                         "reference", "manual", "download", "api", "commands",
+                         "extensions", "themes", "plugins", "addons",
+                         "packages", NULL};
   for (int i = 0; words[i]; i++) {
     if (strstr(folded, words[i])) {
       return TRUE;

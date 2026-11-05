@@ -48,12 +48,15 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Missing optional dependencies must degrade gracefully.
 - Add or update tests in `tests/test_core.c` for query analysis, application/file
   matching, dictionary query forms, ranking, deduplication, configuration or URL
-  changes. Add process/output-limit tests in `tests/test_process.c`, weather
+  changes. Add presentation/display-text tests in `tests/test_core.c`. Add
+  process/output-limit tests in `tests/test_process.c`, weather
   parsing/cache tests in `tests/test_weather.c`, fetcher tests in
   `tests/test_fetch.c`, and dictionary JSON/cache tests in
   `tests/test_dictionary.c`.
 - Run `tests/test_rapid_queries.py` under Xvfb when changing lifecycle, weather
   request handling or plugin teardown. It requires `xdotool`.
+- Use `meson compile -C build benchmark-core && ./build/benchmark-core` for a
+  quick local query-analysis/matching sanity check; benchmarks are not CI gates.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration

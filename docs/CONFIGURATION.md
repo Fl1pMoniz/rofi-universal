@@ -94,6 +94,16 @@ matching is off by default because clipboard history can contain passwords or
 private text. The cliphist list is cached in memory for `cache_seconds` and is
 never written to a persistent cache by the launcher.
 
+## URLs and paths
+
+- Explicit URLs with a scheme are opened directly.
+- `www.` addresses and bare common domains such as `github.com` or
+  `github.com/rofi` are normalized to HTTPS.
+- Common file extensions such as `.pdf`, `.ini`, `.conf`, `.sh` and `.png` are
+  not mistaken for web domains.
+- Absolute paths, `~/` paths, relative paths containing `/`, and glob patterns
+  remain file searches.
+
 ## GitHub and web shortcuts
 
 `github <query>` or `gh <query>` shows repository, user and issue search actions.
@@ -177,7 +187,8 @@ Query analysis is intentionally small and predictable:
 - A single word with no special form gets a strong application signal.
 - Multi-word natural-language queries get a web signal; words such as `features`,
   `configuration`, `guide`, `documentation`, `install`, `examples`,
-  `alternatives`, `comparison`, `review`, `reference`, `manual`, `download` and
+  `alternatives`, `comparison`, `review`, `reference`, `manual`, `download`,
+  `commands`, `extensions`, `themes`, `plugins`, `addons`, `packages` and
   `error` strengthen it.
 - Application matching uses the strongest name, executable, keyword or desktop
   term match. Description-only matches are discounted, and a query that begins
@@ -188,6 +199,11 @@ to applications, files, calculations, web search and clipboard at the same time;
 there is no single intent that suppresses the others. Providers score matches by
 exact title, prefix, keyword, executable and token matches. Ranking combines
 provider relevance, match quality and a small local-action preference.
+
+Result titles and descriptions are rendered as plain text with a consistent
+provider/action separator. Descriptions identify the action where useful, such as
+`File · open · ~/Downloads` or `Calculator · copy result`. No custom markup or
+theme is required.
 
 Results with the same provider and target are deduplicated, keeping the higher
 score. For example, an inline weather summary replaces the redundant external

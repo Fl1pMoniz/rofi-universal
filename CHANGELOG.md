@@ -3,6 +3,46 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.6.0] - 2026-11-05
+
+### Added
+
+- Bare-domain URL recognition for common web domains outside explicit schemes
+  and `www.` prefixes. `github.com/rofi` now becomes `https://github.com/rofi`
+  and opens as a URL rather than being treated as a local path.
+- Expanded natural-language web signals with `commands`, `extensions`, `themes`,
+  `plugins`, `addons` and `packages`.
+- Deterministic presentation helper for title/description rendering, with
+  regression tests for empty and missing descriptions.
+- Clearer action-oriented descriptions for applications, files, calculator,
+  clipboard, web, dictionary and weather fallbacks.
+- Optional `benchmark-core` target for deterministic local query-analysis and
+  application-matching measurements. It is not a CI gate.
+
+### Changed
+
+- `terminal commands`, `firefox extensions` and `hyprland themes` now favor web
+  results over the application prefix match, while `steam games` still favors
+  Steam itself.
+- Result presentation remains plain text compatible with Rofi 1.7.9 and 2.0.0;
+  native pango attribute styling was not used.
+
+### Investigated / retained
+
+- Clipboard decode/copy remains a synchronous explicit-action path. It avoids
+  adding lifecycle complexity around plugin teardown; the large-item caveat
+  remains documented.
+- No new configuration options were added; existing configuration remains
+  compatible.
+
+### Deferred
+
+- A reveal-in-file-manager secondary action was not added because Shift+Enter is
+  already the documented copy action and a new binding would risk conflicting
+  with existing Rofi behavior.
+- Inline GitHub API results and web previews remain deferred for reliability
+  reasons.
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

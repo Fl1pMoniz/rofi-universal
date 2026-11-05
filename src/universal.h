@@ -104,6 +104,7 @@ UResult *u_result_new(UProvider provider, const char *title,
                       const char *copy_text);
 void u_result_free(gpointer data);
 void u_result_set_dedup_key(UResult *result, const char *key);
+char *u_result_display_text(const UResult *result);
 void u_results_dedup(GPtrArray *results);
 int u_result_compare(gconstpointer a, gconstpointer b);
 const char *u_provider_name(UProvider provider);
@@ -129,6 +130,7 @@ gboolean u_query_is_path(const char *query);
 gboolean u_query_looks_calculable(const char *query);
 
 char *u_url_encode(const char *text);
+char *u_normalize_url(const char *text);
 char *u_search_url(const char *engine, const char *query);
 const char *u_web_engine_template(const char *engine);
 char *u_github_search_url(const char *query, const char *type);

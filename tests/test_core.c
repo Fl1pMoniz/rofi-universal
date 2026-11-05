@@ -128,6 +128,20 @@ static void test_analysis(void) {
 
   u_analyze_query("rofi alternatives", &analysis);
   g_assert_cmpint(analysis.web_score, >=, 750);
+
+  u_analyze_query("terminal commands", &analysis);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+  u_analyze_query("firefox extensions", &analysis);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+  u_analyze_query("hyprland themes", &analysis);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+
+  u_analyze_query("github.com/rofi", &analysis);
+  g_assert_true(analysis.url_like);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_URL);
+  u_analyze_query("report.pdf", &analysis);
+  g_assert_false(analysis.url_like);
+  g_assert_cmpint(analysis.file_score, >=, 600);
 }
 
 static void test_match_helpers(void) {
@@ -232,7 +246,23 @@ static void test_intent(void) {
 static void test_urls(void) {
   g_assert_true(u_query_is_url("https://example.com"));
   g_assert_true(u_query_is_url("www.example.com"));
-  g_assert_false(u_query_is_url("example"));
+  g_assert_true(u_query_is_url("github.com/rofi"));
+  g_assert_true(u_query_is_url("github.com"));
+  g_assert_true(u_query_is_url("example.io/path?q=1"));
+  g_assert_false(u_query_is_url("report.pdf"));
+  g_assert_false(u_query_is_url("config.ini"));
+  g_assert_false(u_query_is_url("script.sh"));
+  g_assert_false(u_query_is_url("logo.ai"));
+  g_assert_false(u_query_is_url("config.h.in"));
+  g_assert_false(u_query_is_url("foo/bar"));
+  g_assert_false(u_query_is_url("user@example.com"));
+  g_assert_false(u_query_is_url("192.168.1.1"));
+  char *normalized = u_normalize_url("github.com/rofi");
+  g_assert_cmpstr(normalized, ==, "https://github.com/rofi");
+  g_free(normalized);
+  normalized = u_normalize_url("https://example.com");
+  g_assert_cmpstr(normalized, ==, "https://example.com");
+  g_free(normalized);
   char *url = u_search_url("google", "a b");
   g_assert_cmpstr(url, ==, "https://www.google.com/search?q=a%20b");
   g_free(url);
@@ -316,6 +346,17 @@ static void test_ranking(void) {
                   u_intent_boost(U_INTENT_CALC, U_PROVIDER_WEB));
   g_assert_cmpint(u_intent_boost(U_INTENT_APP, U_PROVIDER_APPS), >,
                   u_intent_boost(U_INTENT_APP, U_PROVIDER_WEB));
+
+  int terminal_app =
+      u_app_match_score("terminal", "kitty", "terminal emulator",
+                        "terminal terminal emulator kitty", "terminal commands");
+  g_assert_cmpint(terminal_app, >=, 500);
+  g_assert_cmpint(u_score_signals(terminal_app, 250, TRUE), <,
+                  u_score_signals(100, 750, FALSE));
+  int steam_app = u_app_match_score("steam", "steam", "game store",
+                                    "steam steam game store", "steam games");
+  g_assert_cmpint(u_score_signals(steam_app, 250, TRUE), >,
+                  u_score_signals(100, 600, FALSE));
 }
 
 static void test_dedup(void) {
@@ -433,6 +474,30 @@ static void test_dedup_key(void) {
   u_result_free(high);
 }
 
+static void test_presentation(void) {
+  UResult *result = u_result_new(U_PROVIDER_APPS, "Firefox",
+                                 "Application · Web browser", "firefox", 100,
+                                 U_ACTION_APP, "firefox.desktop", "Firefox");
+  char *text = u_result_display_text(result);
+  g_assert_cmpstr(text, ==, "Firefox  ·  Application · Web browser");
+  g_free(text);
+  g_free(result->description);
+  result->description = g_strdup("");
+  text = u_result_display_text(result);
+  g_assert_cmpstr(text, ==, "Firefox");
+  g_free(text);
+  u_result_free(result);
+  text = u_result_display_text(NULL);
+  g_assert_cmpstr(text, ==, "");
+  g_free(text);
+
+  g_assert_cmpstr(u_provider_name(U_PROVIDER_APPS), ==, "Application");
+  g_assert_cmpstr(u_provider_name(U_PROVIDER_DICTIONARY), ==, "Dictionary");
+  g_assert_cmpstr(u_provider_name(U_PROVIDER_GITHUB), ==, "GitHub");
+  g_assert_nonnull(u_provider_icon(U_PROVIDER_FILES));
+  g_assert_nonnull(u_provider_icon(U_PROVIDER_WEATHER));
+}
+
 static void test_config(void) {
   UConfig config;
   u_config_init(&config);
@@ -512,6 +577,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dedup", test_dedup);
   g_test_add_func("/core/dedup-key", test_dedup_key);
   g_test_add_func("/core/dictionary-query", test_dictionary_query);
+  g_test_add_func("/core/presentation", test_presentation);
   g_test_add_func("/core/config", test_config);
   return g_test_run();
 }

@@ -148,7 +148,7 @@ static void add_app_result(UMode *mode, const UApp *app, int score) {
   if (app->description && *app->description) {
     description = g_strdup_printf("Application · %s", app->description);
   } else {
-    description = g_strdup("Application");
+    description = g_strdup("Application · launch");
   }
   add_result(mode, u_result_new(U_PROVIDER_APPS, app->name, description,
                                 app->icon, score, U_ACTION_APP, app->id,
@@ -423,9 +423,7 @@ static void add_web(UMode *mode, const char *query, const char *folded_query) {
     return;
   }
   if (u_query_is_url(query)) {
-    char *url =
-        g_str_has_prefix(query, "www.") ? g_strdup_printf("https://%s", query)
-                                        : g_strdup(query);
+    char *url = u_normalize_url(query);
     char *title = g_strdup_printf("Open %s", url);
     add_result(mode, u_result_new(U_PROVIDER_WEB, title, "Web · open address",
                                   "applications-internet", 1000,
@@ -525,7 +523,7 @@ static void add_web(UMode *mode, const char *query, const char *folded_query) {
       label = "Web";
     }
     char *title = g_strdup_printf("Search %s for %s", label, text);
-    char *description = g_strdup_printf("Web · %s", label);
+    char *description = g_strdup_printf("Web · search · %s", label);
     add_result(mode, u_result_new(U_PROVIDER_WEB, title, description,
                                   "applications-internet", 100,
                                   U_ACTION_OPEN_URI, url, url));
@@ -712,14 +710,14 @@ static void add_dictionary(UMode *mode, const char *query,
   char *wiktionary_url = u_wiktionary_url(word);
   char *title = g_strdup_printf("Open definition for %s", word);
   UResult *fallback = u_result_new(
-      U_PROVIDER_DICTIONARY, title, "Dictionary · Dictionary.com",
+      U_PROVIDER_DICTIONARY, title, "Dictionary · open reference",
       "accessories-dictionary", 450, U_ACTION_OPEN_URI, dictionary_url,
       dictionary_url);
   u_result_set_dedup_key(fallback, dictionary_url);
   add_result(mode, fallback);
   char *wiktionary_title = g_strdup_printf("Look up “%s” on Wiktionary", word);
   add_result(mode, u_result_new(U_PROVIDER_DICTIONARY, wiktionary_title,
-                                "Dictionary · Wiktionary",
+                                "Dictionary · open Wiktionary",
                                 "accessories-dictionary", 430,
                                 U_ACTION_OPEN_URI, wiktionary_url,
                                 wiktionary_url));
@@ -835,7 +833,8 @@ static void weather_finished(const char *stdout_text,
         char *url = u_weather_forecast_url(job->city);
         add_async_result(mode,
                          u_result_new(U_PROVIDER_WEATHER, summary,
-                                      "Weather · forecast", "weather-clear", 700,
+                                      "Weather · open forecast", "weather-clear",
+                                      700,
                                       U_ACTION_OPEN_URI, url, summary));
         g_free(url);
         merge_results(mode);
@@ -916,7 +915,7 @@ static void add_weather(UMode *mode, const char *query,
   char *forecast = u_weather_forecast_url(city);
   char *fallback_title = g_strdup_printf("Open detailed forecast for %s", city);
   add_result(mode, u_result_new(U_PROVIDER_WEATHER, fallback_title,
-                                "Weather · wttr.in", "weather-clear", 450,
+                                "Weather · open forecast", "weather-clear", 450,
                                 U_ACTION_OPEN_URI, forecast, forecast));
   g_free(fallback_title);
   gboolean fresh = FALSE;
@@ -924,7 +923,7 @@ static void add_weather(UMode *mode, const char *query,
       &mode->weather_cache, city, g_get_monotonic_time(), &fresh);
   if (summary && fresh) {
     add_result(mode, u_result_new(U_PROVIDER_WEATHER, summary,
-                                  "Weather · forecast", "weather-clear", 700,
+                                  "Weather · open forecast", "weather-clear", 700,
                                   U_ACTION_OPEN_URI, forecast, summary));
   } else {
     start_weather(mode, city);
@@ -941,7 +940,7 @@ static void add_path_result(UMode *mode, const char *query) {
   }
   char *base = g_path_get_basename(expanded);
   gboolean is_dir = g_file_test(expanded, G_FILE_TEST_IS_DIR);
-  char *description = g_strdup_printf("File · %s", expanded);
+  char *description = g_strdup_printf("File · open · %s", expanded);
   add_result(mode, u_result_new(U_PROVIDER_FILES, base, description,
                                 is_dir ? "folder" : "text-x-generic", 1200,
                                 U_ACTION_OPEN_PATH, expanded, expanded));
@@ -960,7 +959,7 @@ static void add_bookmarks(UMode *mode, const char *folded_query) {
                                      bookmark->folded_terms, folded_query);
     if (score > 0) {
       add_result(mode, u_result_new(U_PROVIDER_BOOKMARKS, bookmark->title,
-                                    "Bookmark", "user-bookmarks", score,
+                                    "Bookmark · open", "user-bookmarks", score,
                                     U_ACTION_OPEN_URI, bookmark->url,
                                     bookmark->url));
     }
@@ -1084,7 +1083,7 @@ static void add_clipboard(UMode *mode, const char *query,
       title[90] = '\0';
     }
     add_result(mode, u_result_new(U_PROVIDER_CLIPBOARD, title,
-                                  "Clipboard · cliphist", "edit-paste", score,
+                                  "Clipboard · copy", "edit-paste", score,
                                   U_ACTION_CLIPBOARD, entry->id,
                                   entry->preview));
     g_free(title);
@@ -1173,7 +1172,7 @@ static void calc_finished(const char *stdout_text, const char *stderr_text,
     char *text = g_strstrip(g_strdup(stdout_text));
     if (*text && !g_str_has_prefix(text, "error") &&
         !strstr(text, "error:") && !strstr(text, "warning:")) {
-      char *description = g_strdup_printf("Calculator · %s", mode->query);
+      char *description = g_strdup("Calculator · copy result");
       add_async_result(mode,
                        u_result_new(U_PROVIDER_CALC, text, description,
                                     "accessories-calculator", 1000,
@@ -1225,7 +1224,7 @@ static void files_finished(const char *stdout_text, const char *stderr_text,
       char *base = g_path_get_basename(path);
       char *parent = g_path_get_dirname(path);
       gboolean is_dir = g_file_test(path, G_FILE_TEST_IS_DIR);
-      char *description = g_strdup_printf("File · %s", parent);
+      char *description = g_strdup_printf("File · open · %s", parent);
       add_async_result(mode,
                        u_result_new(U_PROVIDER_FILES, base, description,
                                     is_dir ? "folder" : "text-x-generic",
@@ -1589,11 +1588,7 @@ static char *universal_get_display_value(const Mode *sw, unsigned int selected,
   if (state) {
     *state = 0;
   }
-  UResult *result = g_ptr_array_index(mode->results, selected);
-  if (result->description && *result->description) {
-    return g_strdup_printf("%s  ·  %s", result->title, result->description);
-  }
-  return g_strdup(result->title);
+  return u_result_display_text(g_ptr_array_index(mode->results, selected));
 }
 
 static cairo_surface_t *universal_get_icon(const Mode *sw, unsigned int selected,
