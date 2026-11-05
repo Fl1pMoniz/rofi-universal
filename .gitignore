@@ -1,0 +1,35 @@
+# Build output
+build/
+build-*/
+*.o
+*.so
+*.dylib
+*.dll
+
+# Meson/Ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+meson-logs/
+meson-private/
+meson-info/
+
+# Editors and local files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python test caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local configuration and secrets
+config.ini
+.env
+.env.*
+*.pem
+*.key

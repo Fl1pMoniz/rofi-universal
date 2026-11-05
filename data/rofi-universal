@@ -1,0 +1,14 @@
+#!/bin/sh
+# Launch the unified Rofi mode. Install this script next to lib/rofi/libuniversal.so.
+set -eu
+self=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
+prefix=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+plugin_dirs=${ROFI_UNIVERSAL_PLUGIN_PATH:-"$prefix/lib/rofi:$prefix/lib64/rofi"}
+export ROFI_PLUGIN_PATH="$plugin_dirs${ROFI_PLUGIN_PATH:+:$ROFI_PLUGIN_PATH}"
+
+set -- -theme-str 'textbox-title { str: "Search"; }' -show universal -modi universal "$@"
+config=${ROFI_UNIVERSAL_ROFI_CONFIG:-"$HOME/.config/rofi/config.rasi"}
+if [ -f "$config" ]; then
+    set -- -config "$config" "$@"
+fi
+exec rofi "$@"
