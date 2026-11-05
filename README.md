@@ -33,10 +33,13 @@ type, and you do not need to switch modes or remember a prefix for normal use.
   `!docs` and `!pkg` shortcuts.
 - **Files** through direct path expansion and asynchronous optional `fd` search.
   Filename matches rank above parent-path matches, and glob patterns such as
-  `*.png` are supported by `fd`.
+  `*.png` are supported by `fd`. `Alt+1` reveals a selected file through
+  `org.freedesktop.FileManager1`, falling back to opening its containing
+  directory; selecting a directory opens it.
 - **Clipboard history** through `cliphist`, with explicit `clip ` search and
   optional low-priority automatic matching. The history is cached in memory and
-  never written to disk by the launcher.
+  never written to disk by the launcher. Decoding a selected item is bounded to
+  4 MiB and text-only; invalid or binary content is refused rather than copied.
 - **Inline dictionary** for `define <word>`, `definition of <word>`,
   `<word> meaning` and `what does <word> mean`. Definitions, part of speech,
   phonetics and examples are shown directly in Rofi when the public
@@ -68,8 +71,9 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
 interaction and result presentation; v0.3 added inline weather, v0.4 improved
-ranking and search categories, v0.5 added inline dictionary definitions, and
-v0.6 improves URL recognition and action-oriented result descriptions.
+ranking and search categories, v0.5 added inline dictionary definitions, v0.6
+improved URL recognition and action-oriented descriptions, and v0.7 adds file
+reveal actions and bounded clipboard decoding.
 
 ## Requirements
 
@@ -277,6 +281,7 @@ and are not queried.
 | --- | --- |
 | `Enter` | Open the selected result / copy a calculation |
 | `Shift+Enter` | Copy the selected result's URL, path, value or title |
+| `Alt+1` | Reveal selected file in file manager; opens a directory |
 | `Up` / `Down` | Move selection |
 | `PageUp` / `PageDown` | Move by a page |
 | `Home` / `End` | Jump to the first/last result |
@@ -340,6 +345,8 @@ tests/
   test_fetch.c   HTTP fetcher selection and command tests
   test_dictionary.c Dictionary URL, JSON parsing and cache tests
   test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
+  test_file_actions.py Xvfb Alt+1 reveal fallback test
+  test_clipboard_actions.py Xvfb clipboard decode/copy test with fake tools
   benchmark_core.c Optional query-analysis and app-matching benchmark
 ```
 
@@ -410,7 +417,9 @@ output limits, partial reads, large stderr, timeout, continuous output,
 invalid UTF-8, cancellation, failures and spawn errors. The rapid-query smoke
 test requires Xvfb and `xdotool`; it starts Rofi with a fake fetcher, exercises
 weather and dictionary requests, and closes the launcher while work is pending.
-An interactive smoke test can be run on Wayland:
+The file-action test uses a fake open command and verifies the Alt+1 fallback
+opens the containing directory when FileManager1 is unavailable. An interactive
+smoke test can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -487,11 +496,16 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   plugin. Rebuild after a Rofi major upgrade.
 - Provider subprocesses executed through the shared process helper cap stdout
   and stderr at 4 MiB per stream. Output above the cap is treated as a failed
-  operation, not silently parsed. The clipboard-decode action still uses a
-  separate synchronous clipboard helper and can briefly buffer a large selected
-  clipboard item.
-- A reveal-in-file-manager secondary action is not implemented; `Shift+Enter`
-  retains its existing copy behavior on files.
+  operation, not silently parsed. Clipboard decoding uses a separate bounded
+  synchronous helper for the explicit copy action; items above 4 MiB, binary
+  items and invalid UTF-8 are refused.
+- File reveal depends on `org.freedesktop.FileManager1`. When unavailable, the
+  containing directory is opened through the desktop's default handler. This
+  path is not tested against every file manager or desktop environment.
+- Clipboard image/binary clipboard workflows are not copied by the inline
+  clipboard action; only valid UTF-8 text up to 4 MiB is supported. Decoding
+  remains a synchronous explicit action with no separate timeout beyond the
+  local `cliphist` process.
 
 ## License
 

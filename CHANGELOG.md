@@ -3,6 +3,48 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.7.0] - 2026-11-05
+
+### Added
+
+- `Alt+1` file action: reveal a selected file through
+  `org.freedesktop.FileManager1`, with a fallback to opening its containing
+  directory through the desktop's default handler. Directories open normally.
+- `u_file_uri()` and `u_file_parent()` helpers with tests for spaces, Unicode,
+  absolute paths and parent-directory resolution.
+- Bounded synchronous clipboard decoding for explicit copy actions. Decoding is
+  capped at 4 MiB; binary data and invalid UTF-8 are refused instead of being
+  silently corrupted.
+- Process-layer synchronous capture tests for small, exact-limit, oversized,
+  binary, non-zero and missing-executable cases.
+- `Alt+1` discoverability hint in the Rofi mode message when file results are
+  present.
+
+### Changed
+
+- File result descriptions now explicitly say `File · open · <path>`.
+- Clipboard result descriptions now say `Clipboard · copy`.
+- Clipboard behavior remains text-only; image/binary clipboard entries are not
+  copied by the inline action.
+- No new configuration options were added.
+
+### Investigated / retained
+
+- File-manager reveal uses the standard FileManager1 D-Bus interface and a
+  default-handler fallback; no file-manager executable is hardcoded.
+- Clipboard decode remains synchronous because it is an explicit action and the
+  operation is now bounded. It is not moved into plugin-lifetime async jobs,
+  avoiding teardown races that could cancel the copy.
+- GitHub inline API results remain deferred because unauthenticated search rate
+  limits make typing-driven requests unreliable.
+
+### Deferred
+
+- Cross-desktop automated file-manager reveal testing was not added; URI/parent
+  helpers are unit-tested, while the D-Bus/default-handler action depends on the
+  live desktop environment.
+- Clipboard image/binary support remains out of scope.
+
 ## [0.6.0] - 2026-11-05
 
 ### Added

@@ -277,3 +277,81 @@ void u_process_run(const char *const *argv, GCancellable *cancellable,
   u_process_run_limited(argv, cancellable, U_PROCESS_DEFAULT_MAX_OUTPUT, 0,
                         done, user_data);
 }
+
+gboolean u_process_capture_sync_limited(const char *const *argv,
+                                        gsize max_output_bytes,
+                                        char **stdout_text,
+                                        int *exit_status) {
+  if (stdout_text) {
+    *stdout_text = NULL;
+  }
+  if (exit_status) {
+    *exit_status = -1;
+  }
+  if (!argv || !argv[0]) {
+    return FALSE;
+  }
+  gsize limit =
+      max_output_bytes > 0 ? max_output_bytes : U_PROCESS_DEFAULT_MAX_OUTPUT;
+  GError *error = NULL;
+  GSubprocess *process = g_subprocess_newv(
+      argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+      &error);
+  if (!process) {
+    g_clear_error(&error);
+    return FALSE;
+  }
+  GInputStream *stream = g_subprocess_get_stdout_pipe(process);
+  GString *output = g_string_new(NULL);
+  guint8 buffer[READ_CHUNK];
+  gboolean ok = stream != NULL;
+  if (stream) {
+    for (;;) {
+      gssize count =
+          g_input_stream_read(stream, buffer, sizeof(buffer), NULL, &error);
+      if (count > 0) {
+        if (output->len + (gsize)count > limit) {
+          ok = FALSE;
+          g_subprocess_force_exit(process);
+          break;
+        }
+        g_string_append_len(output, (const char *)buffer, count);
+      } else if (count == 0) {
+        break;
+      } else {
+        ok = FALSE;
+        g_subprocess_force_exit(process);
+        break;
+      }
+    }
+  }
+  g_clear_error(&error);
+  if (!g_subprocess_wait(process, NULL, &error)) {
+    ok = FALSE;
+  }
+  g_clear_error(&error);
+  int status = -1;
+  if (g_subprocess_get_if_exited(process)) {
+    status = g_subprocess_get_exit_status(process);
+  }
+  if (status != 0) {
+    ok = FALSE;
+  }
+  if (ok && memchr(output->str, '\0', output->len) != NULL) {
+    ok = FALSE;
+  }
+  if (exit_status) {
+    *exit_status = status;
+  }
+  if (ok) {
+    if (stdout_text) {
+      *stdout_text = g_string_free(output, FALSE);
+    } else {
+      g_string_free(output, TRUE);
+    }
+  } else {
+    g_string_free(output, TRUE);
+  }
+  g_object_unref(process);
+  return ok;
+}

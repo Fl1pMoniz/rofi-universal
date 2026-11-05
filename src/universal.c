@@ -488,6 +488,26 @@ char *u_expand_path(const char *path) {
   return g_strdup(path);
 }
 
+char *u_file_uri(const char *path) {
+  if (!path || !*path) {
+    return NULL;
+  }
+  char *absolute = g_canonicalize_filename(path, NULL);
+  char *uri = g_filename_to_uri(absolute, NULL, NULL);
+  g_free(absolute);
+  return uri;
+}
+
+char *u_file_parent(const char *path) {
+  if (!path || !*path) {
+    return NULL;
+  }
+  char *absolute = g_canonicalize_filename(path, NULL);
+  char *parent = g_path_get_dirname(absolute);
+  g_free(absolute);
+  return parent;
+}
+
 char *u_default_config_path(void) {
   return g_build_filename(g_get_user_config_dir(), "rofi-universal", "config.ini",
                           NULL);

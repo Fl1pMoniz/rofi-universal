@@ -60,6 +60,25 @@ redundant Dictionary.com fallback is replaced.
 `u_score_signals()` and `u_provider_relevance()` are testable in `test_core.c`.
 Sorting is deterministic: score, provider, then title.
 
+## Actions
+
+The normal `Enter` action is provider-specific. `Shift+Return` uses Rofi's
+`MENU_CUSTOM_ACTION` for the existing copy behavior. `Alt+1` (`kb-custom-1`,
+`MENU_CUSTOM_COMMAND` index 0) reveals a selected file: the plugin calls
+`org.freedesktop.FileManager1.ShowItems` with a file URI and a 750 ms timeout,
+then falls back to opening the containing directory through the default desktop
+handler. Directories open normally. No file-manager executable is hardcoded.
+
+The reveal call is an explicit action rather than typing-time work. It is allowed
+to make a short synchronous D-Bus/default-handler call while Rofi exits; it does
+not affect search responsiveness. URI/parent construction and path-normalization
+helpers are unit-tested.
+
+Clipboard decode uses a bounded, synchronous `GSubprocess` capture after an
+explicit copy action. It caps output at 4 MiB and refuses binary or invalid UTF-8
+content. It remains separate from the async plugin jobs so that plugin teardown
+cannot cancel a requested copy. Clipboard contents are never logged.
+
 ## Async lifecycle
 
 `src/process.c` wraps `GSubprocess` with cancellable asynchronous stdout/stderr

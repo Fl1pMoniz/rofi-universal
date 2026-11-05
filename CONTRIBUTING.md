@@ -49,12 +49,17 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Add or update tests in `tests/test_core.c` for query analysis, application/file
   matching, dictionary query forms, ranking, deduplication, configuration or URL
   changes. Add presentation/display-text tests in `tests/test_core.c`. Add
-  process/output-limit tests in `tests/test_process.c`, weather
+  file URI/parent tests in `tests/test_core.c`, process/output-limit and bounded
+  synchronous clipboard-capture tests in `tests/test_process.c`, weather
   parsing/cache tests in `tests/test_weather.c`, fetcher tests in
   `tests/test_fetch.c`, and dictionary JSON/cache tests in
   `tests/test_dictionary.c`.
 - Run `tests/test_rapid_queries.py` under Xvfb when changing lifecycle, weather
   request handling or plugin teardown. It requires `xdotool`.
+- Run `tests/test_file_actions.py` under Xvfb when changing file actions. It
+  verifies the Alt+1 directory fallback with a fake handler.
+- Run `tests/test_clipboard_actions.py` under Xvfb when changing clipboard
+  decode/copy behavior. It uses fake cliphist/wl-copy tools.
 - Use `meson compile -C build benchmark-core && ./build/benchmark-core` for a
   quick local query-analysis/matching sanity check; benchmarks are not CI gates.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
@@ -84,6 +89,9 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
    `u_process_run_limited()`; do not parse output from a failed/truncated process.
 9. Network providers must use the shared fetch/process helpers, cache bounded
    results in memory, and reject stale query generations.
+10. File actions should use the default desktop handler or the standard
+    FileManager1 D-Bus interface; do not hardcode a file-manager executable or
+    invoke a shell.
 
 ## Licensing
 

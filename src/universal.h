@@ -141,6 +141,8 @@ void u_config_init(UConfig *config);
 gboolean u_config_load(UConfig *config, const char *path);
 void u_config_clear(UConfig *config);
 char *u_expand_path(const char *path);
+char *u_file_uri(const char *path);
+char *u_file_parent(const char *path);
 char *u_default_config_path(void);
 
 #endif

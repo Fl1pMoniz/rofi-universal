@@ -75,6 +75,11 @@ opened without `fd`. Filename matches rank above parent-path matches. Queries
 containing glob characters use `fd --glob`, for example `*.png`, `report?.pdf` or
 `[ab].txt`.
 
+Press `Alt+1` on a file result to reveal it through
+`org.freedesktop.FileManager1`; if that service is unavailable, the containing
+directory is opened through the desktop's default handler. Directories open with
+`Enter`. No file-manager executable is hardcoded.
+
 ## Clipboard
 
 ```ini
@@ -86,7 +91,11 @@ max_results=10
 
 Only entries matching `clip <text>` are shown by default. Selecting an entry
 decodes it with `cliphist` and copies it to the Wayland clipboard with `wl-copy`
-(or X11 `xclip`/`xsel`).
+(or X11 `xclip`/`xsel`). Decoding is bounded to 4 MiB. Binary entries and invalid
+UTF-8 are refused rather than copied; the clipboard provider is text-only. The
+decode/copy action is an explicit synchronous operation and never logs or
+persists clipboard contents. It has no separate timeout beyond the local
+`cliphist` process; oversized, binary or invalid-UTF-8 selections are refused.
 
 Set `automatic=true` to also include clipboard matches in normal searches. These
 results are deliberately ranked below applications and calculations. Automatic
@@ -218,6 +227,14 @@ a successful provider result.
 Local results render immediately. qalc, fd, clipboard refresh, bookmark loading
 and inline weather retrieval run asynchronously. A new query cancels obsolete
 work, and callbacks from older query generations are ignored.
+
+## Keyboard and result actions
+
+`Enter` performs the provider’s primary action. `Shift+Enter` copies the selected
+result’s URL, path, value or title. `Alt+1` reveals a selected file in the file
+manager, or opens a selected directory. These use Rofi’s documented
+`MENU_CUSTOM_ACTION` and `MENU_CUSTOM_COMMAND` bits; `Alt+1` corresponds to Rofi’s
+default `kb-custom-1` binding and can be rebound in the Rofi configuration.
 
 ## Rofi theme
 

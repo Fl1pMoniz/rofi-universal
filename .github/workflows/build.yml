@@ -30,6 +30,10 @@ jobs:
         run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_integration.py
       - name: Rapid query and teardown smoke test
         run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_rapid_queries.py
+      - name: File reveal fallback test
+        run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_file_actions.py
+      - name: Clipboard decode/copy test
+        run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_clipboard_actions.py
       - name: Install and uninstall scripts
         run: |
           PREFIX=/tmp/ru-install XDG_CONFIG_HOME=/tmp/ru-config ./scripts/install.sh

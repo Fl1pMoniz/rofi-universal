@@ -1400,6 +1400,54 @@ static void open_path(UMode *mode, const char *path) {
   g_free(uri);
 }
 
+static gboolean reveal_with_file_manager(const char *path) {
+  char *uri = u_file_uri(path);
+  if (!uri) {
+    return FALSE;
+  }
+  GError *error = NULL;
+  GDBusConnection *bus =
+      g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+  if (!bus) {
+    g_clear_error(&error);
+    g_free(uri);
+    return FALSE;
+  }
+  const gchar *uris[] = {uri, NULL};
+  GVariant *reply = g_dbus_connection_call_sync(
+      bus, "org.freedesktop.FileManager1",
+      "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1",
+      "ShowItems", g_variant_new("(^ass)", uris, ""), NULL,
+      G_DBUS_CALL_FLAGS_NONE, 750, NULL, &error);
+  g_clear_error(&error);
+  g_object_unref(bus);
+  g_free(uri);
+  if (reply) {
+    g_variant_unref(reply);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+static void reveal_path(UMode *mode, const char *path) {
+  if (!path || !*path) {
+    return;
+  }
+  if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
+    open_path(mode, path);
+    return;
+  }
+  if (g_file_test(path, G_FILE_TEST_EXISTS) &&
+      reveal_with_file_manager(path)) {
+    return;
+  }
+  char *parent = u_file_parent(path);
+  if (parent && g_file_test(parent, G_FILE_TEST_IS_DIR)) {
+    open_path(mode, parent);
+  }
+  g_free(parent);
+}
+
 static void launch_app(const char *id) {
   if (!id) {
     return;
@@ -1423,15 +1471,11 @@ static void execute_clipboard(const char *id) {
     return;
   }
   const char *argv[] = {cliphist, "decode", id, NULL};
-  GError *error = NULL;
   char *output = NULL;
-  if (!g_spawn_sync(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,
-                    &output, NULL, NULL, &error)) {
-    if (error) {
-      g_error_free(error);
-    }
-  }
-  if (output) {
+  int exit_status = -1;
+  if (u_process_capture_sync_limited(argv, U_PROCESS_DEFAULT_MAX_OUTPUT,
+                                     &output, &exit_status) &&
+      output && g_utf8_validate(output, -1, NULL)) {
     copy_to_clipboard(output);
   }
   g_free(output);
@@ -1636,9 +1680,23 @@ static char *universal_get_message(const Mode *sw) {
   if (!mode) {
     return NULL;
   }
+  gboolean has_path = FALSE;
+  for (guint i = 0; i < mode->results->len; i++) {
+    UResult *result = g_ptr_array_index(mode->results, i);
+    if (result->action == U_ACTION_OPEN_PATH) {
+      has_path = TRUE;
+      break;
+    }
+  }
   if (!mode->query || !*mode->query) {
     return g_markup_printf_escaped(
         "Type to search · <b>Enter</b> open · <b>Shift+Enter</b> copy");
+  }
+  if (has_path) {
+    return g_markup_printf_escaped(
+        "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy · "
+        "<b>Alt+1</b> reveal file",
+        mode->results->len);
   }
   return g_markup_printf_escaped(
       "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy",
@@ -1652,8 +1710,16 @@ static ModeMode universal_result(Mode *sw, int menu_entry, char **input,
   if (!mode || selected >= mode->results->len) {
     return MODE_EXIT;
   }
+  UResult *result = g_ptr_array_index(mode->results, selected);
+  if (menu_entry & MENU_CUSTOM_COMMAND) {
+    if ((menu_entry & MENU_LOWER_MASK) == 0 &&
+        result->action == U_ACTION_OPEN_PATH) {
+      reveal_path(mode, result->payload);
+    }
+    return MODE_EXIT;
+  }
   if (menu_entry & MENU_OK) {
-    execute_result(mode, g_ptr_array_index(mode->results, selected),
+    execute_result(mode, result,
                    (menu_entry & MENU_CUSTOM_ACTION) != 0);
     return MODE_EXIT;
   }

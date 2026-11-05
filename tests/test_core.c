@@ -498,6 +498,22 @@ static void test_presentation(void) {
   g_assert_nonnull(u_provider_icon(U_PROVIDER_WEATHER));
 }
 
+static void test_file_actions(void) {
+  char *uri = u_file_uri("/tmp/report final.pdf");
+  g_assert_cmpstr(uri, ==, "file:///tmp/report%20final.pdf");
+  g_free(uri);
+  uri = u_file_uri("/tmp/café.txt");
+  g_assert_cmpstr(uri, ==, "file:///tmp/caf%C3%A9.txt");
+  g_free(uri);
+  g_assert_null(u_file_uri(NULL));
+  char *parent = u_file_parent("/tmp/dir with space/report.pdf");
+  g_assert_cmpstr(parent, ==, "/tmp/dir with space");
+  g_free(parent);
+  parent = u_file_parent("/tmp");
+  g_assert_cmpstr(parent, ==, "/");
+  g_free(parent);
+}
+
 static void test_config(void) {
   UConfig config;
   u_config_init(&config);
@@ -578,6 +594,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dedup-key", test_dedup_key);
   g_test_add_func("/core/dictionary-query", test_dictionary_query);
   g_test_add_func("/core/presentation", test_presentation);
+  g_test_add_func("/core/file-actions", test_file_actions);
   g_test_add_func("/core/config", test_config);
   return g_test_run();
 }
