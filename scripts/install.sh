@@ -19,6 +19,6 @@ if [ ! -e "$configdir/config.ini" ]; then
     cp "$root/data/config.example.ini" "$configdir/config.ini"
 fi
 printf 'Installed rofi-universal.\n'
-printf 'Plugin directory: %s/lib/rofi (or lib64/rofi)\n' "$prefix"
+printf 'Plugin directory: under %s/lib*/rofi\n' "$prefix"
 printf 'Launcher: %s/bin/rofi-universal\n' "$prefix"
 printf 'Configuration: %s\n' "$configdir/config.ini"

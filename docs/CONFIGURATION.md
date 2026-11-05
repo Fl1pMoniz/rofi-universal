@@ -108,8 +108,9 @@ action remains available, and is the fallback when inline retrieval fails.
 
 `location` is used only for a bare `weather` query. If it is empty, use
 `weather in <city>`; the plugin does not silently guess a location from the
-network address. `cache_seconds` controls the in-memory cache. No weather data is
-written to disk by the plugin.
+network address. `cache_seconds` controls the bounded in-memory cache; the
+oldest entry is evicted when the cache is full. No weather data is written to
+disk by the plugin.
 
 ## Ranking and query signals
 

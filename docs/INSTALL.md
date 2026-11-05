@@ -1,5 +1,16 @@
 # Installation
 
+## Tested environments
+
+- Fedora 42 with Rofi 1.7.9: CI compile and Xvfb plugin load.
+- Fedora 44 with Rofi 2.0.0: CI compile and Xvfb plugin load.
+- Arch Linux current with Rofi 2.0.0: CI package build, install, Xvfb plugin
+  load, `namcap` and removal.
+- Local Wayland/Hyprland with Rofi 2.0.0.
+
+The Debian/Ubuntu instructions are generic Meson build instructions and are not
+covered by this repository's CI matrix.
+
 ## Distribution dependencies
 
 ### Fedora / Nobara
@@ -57,9 +68,10 @@ meson compile -C build
 meson install -C build
 ```
 
-The plugin is installed in `$PREFIX/lib/rofi/libuniversal.so` or
-`$PREFIX/lib64/rofi/libuniversal.so`. The `rofi-universal` launcher discovers both
-locations.
+The plugin is installed in the Meson plugin directory, such as
+`$PREFIX/lib/rofi/libuniversal.so`, `$PREFIX/lib64/rofi/libuniversal.so` or a
+multiarch `$PREFIX/lib/*/rofi/libuniversal.so`. The `rofi-universal` launcher
+discovers all of these locations.
 
 ## Distribution packages
 
@@ -77,9 +89,11 @@ cd packaging
 makepkg -si
 ```
 
-The RPM is built and tested in CI and is not published in official repositories.
-The PKGBUILD is not built on Arch in this repository's CI; see
-[../packaging/README.md](../packaging/README.md).
+The RPM is built, installed and removed in Fedora 42/44 CI. The PKGBUILD is
+built, installed, plugin-loaded and removed in an Arch Linux container CI. Neither
+package is published in official repositories. See
+[../packaging/README.md](../packaging/README.md) for release archive and checksum
+details.
 
 ## Running without installation
 

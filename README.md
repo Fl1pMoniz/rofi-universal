@@ -57,8 +57,9 @@ access and `curl` or `wget` are available.
 
 ### Required
 
-- Rofi **1.7.6+** with plugin support (tested with Rofi **2.0.0** on Fedora/Nobara
-  and Hyprland/Wayland; CI builds against the Fedora 42 and 44 Rofi packages)
+- Rofi **1.7.6+** with plugin support. CI compiles and loads the plugin with
+  Rofi **1.7.9** (Fedora 42) and Rofi **2.0.0** (Fedora 44 and Arch Linux).
+  Interactive Wayland testing uses Rofi **2.0.0**.
 - GLib/GIO development headers, a C compiler, Meson and Ninja
 - `qalc` from [Qalculate!](https://qalculate.github.io/) for calculations,
   units and currency conversion
@@ -102,10 +103,22 @@ sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
 
+### Tested environments
+
+- Fedora 42 with Rofi 1.7.9: compiled and plugin-loaded in CI.
+- Fedora 44 with Rofi 2.0.0: compiled and plugin-loaded in CI.
+- Arch Linux current with Rofi 2.0.0: package built, installed, plugin-loaded
+  and removed in an Arch container in CI.
+- Local Wayland/Hyprland with Rofi 2.0.0: interactive manual testing.
+
+The Debian/Ubuntu commands below are generic Meson build instructions; they are
+not part of this repository's CI matrix.
+
 ### Fedora / Nobara package
 
-An RPM spec is provided in `packaging/rofi-universal.spec` and is built in CI.
-It is not currently published in the Fedora or Nobara repositories:
+An RPM spec is provided in `packaging/rofi-universal.spec`. It is built, installed
+and removed in CI on Fedora 42 and Fedora 44, but it is not currently published
+in the Fedora or Nobara repositories:
 
 ```sh
 sudo dnf builddep packaging/rofi-universal.spec
@@ -114,15 +127,18 @@ rpmbuild -ba packaging/rofi-universal.spec
 
 ### Arch Linux package
 
-A PKGBUILD is provided in `packaging/PKGBUILD`:
+A PKGBUILD with a pinned SHA-256 checksum is provided in
+`packaging/PKGBUILD`:
 
 ```sh
 cd packaging
 makepkg -si
 ```
 
-The PKGBUILD is not built on Arch in this repository's CI; see
-[packaging/README.md](packaging/README.md) for the validation status.
+It is built, installed, plugin-loaded, checked with `namcap` and removed in an
+Arch Linux container in CI. It is not published in the official Arch
+repositories. See [packaging/README.md](packaging/README.md) for the release
+archive and checksum procedure.
 
 ### Build and install
 
@@ -133,8 +149,9 @@ cd rofi-universal
 ```
 
 The default prefix is `~/.local`. Use another prefix with `PREFIX=/usr/local`.
-The installer builds the plugin, installs `libuniversal.so` under
-`$PREFIX/lib/rofi`, installs the `rofi-universal` launcher, and copies an example
+The installer builds the plugin, installs `libuniversal.so` under the Meson
+plugin directory (`$PREFIX/lib/rofi`, `$PREFIX/lib64/rofi` or a multiarch
+`lib/*/rofi` path), installs the `rofi-universal` launcher, and copies an example
 configuration to `~/.config/rofi-universal/config.ini` if one does not exist.
 
 Run it:
@@ -390,10 +407,13 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   `wget` binary. It degrades to an external forecast link when unavailable.
 - Web search opens a browser action; it does not scrape search-engine result
   pages or display live previews.
-- The RPM spec is built and tested in CI. The PKGBUILD is provided for Arch users
-  but is not built on Arch in this repository's CI.
+- Neither the RPM nor the PKGBUILD is published in official distribution
+  repositories.
 - Rofi plugin ABI compatibility is bounded by the Rofi version used to build the
   plugin. Rebuild after a Rofi major upgrade.
+- Subprocess output is buffered in memory by the existing process helper. The
+  clipboard result cache is bounded, but extremely large output from an optional
+  external tool is not incrementally capped.
 
 ## License
 

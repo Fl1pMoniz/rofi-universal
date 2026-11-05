@@ -44,6 +44,9 @@ static void process_finished(GObject *source, GAsyncResult *result,
   } else if (!context->cancelled && g_subprocess_get_if_signaled(process)) {
     exit_status = 128 + g_subprocess_get_term_sig(process);
   }
+  if (!context->cancelled && success && exit_status != 0) {
+    success = FALSE;
+  }
   if (context->cancel_handler && context->cancellable) {
     g_cancellable_disconnect(context->cancellable, context->cancel_handler);
     context->cancel_handler = 0;

@@ -28,8 +28,10 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-Packaging files are under `packaging/`. The Fedora RPM is built in CI; the
-PKGBUILD is provided for Arch users and is not built in this repository's CI.
+Packaging files are under `packaging/`. The Fedora RPM and Arch PKGBUILD are
+built and lifecycle-tested in CI. Release archives are generated with
+`scripts/make-source-tarball.sh`; update the pinned checksum and release-asset URL
+together and follow `packaging/README.md`.
 
 Run from the build tree:
 
@@ -46,7 +48,8 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Missing optional dependencies must degrade gracefully.
 - Add or update tests in `tests/test_core.c` for query analysis, ranking,
   configuration or URL changes. Add process tests in `tests/test_process.c` for
-  async behavior and weather parsing tests in `tests/test_weather.c`.
+  async behavior, and weather parsing/cache/backoff/fetcher tests in
+  `tests/test_weather.c`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration

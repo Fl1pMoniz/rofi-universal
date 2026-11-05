@@ -31,8 +31,11 @@ Include:
 - **Subprocesses** are spawned with argument arrays, not through a shell. The
   configured `open_command` is parsed with `g_shell_parse_argv`; treat the
   configuration file as trusted local input. Asynchronous subprocesses are
-  cancellable, and their callbacks are ignored when their query generation is
-  stale or the plugin has been destroyed.
+  cancellable, non-zero exits are treated as failures, and callbacks are ignored
+  when their query generation is stale or the plugin has been destroyed.
+  Subprocess stdout is buffered in memory; queries and expected provider output
+  are small, but extremely large output from an optional external tool is not
+  incrementally capped.
 - **Network access** is limited to qalc exchange-rate updates, optional inline
   weather retrieval, and opening web actions chosen by the user. Inline weather
   sends the requested city to wttr.in through `curl` or `wget`; it is not used

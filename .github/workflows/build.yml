@@ -19,12 +19,25 @@ jobs:
         run: >
           dnf install -y
           gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
+          python3 xorg-x11-server-Xvfb xorg-x11-xauth
       - name: Configure
         run: meson setup build --buildtype=release -Dwerror=true
       - name: Build
         run: meson compile -C build
       - name: Test
         run: meson test -C build --print-errorlogs
+      - name: Load plugin through Rofi
+        run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_integration.py
+      - name: Install and uninstall scripts
+        run: |
+          PREFIX=/tmp/ru-install XDG_CONFIG_HOME=/tmp/ru-config ./scripts/install.sh
+          test -f /tmp/ru-install/bin/rofi-universal
+          test -f /tmp/ru-install/share/rofi-universal/config.example.ini
+          test -f /tmp/ru-config/rofi-universal/config.ini
+          PREFIX=/tmp/ru-install ./scripts/uninstall.sh
+          test ! -e /tmp/ru-install/bin/rofi-universal
+          test ! -e /tmp/ru-install/share/rofi-universal/config.example.ini
+          test -f /tmp/ru-config/rofi-universal/config.ini
 
   quality:
     name: Clang, analyzer and sanitizers
@@ -55,30 +68,85 @@ jobs:
           meson compile -C build-asan
           meson test -C build-asan --print-errorlogs
 
-  packaging:
-    name: RPM and PKGBUILD validation
+  fedora-package:
+    name: Fedora ${{ matrix.container }} package lifecycle
     runs-on: ubuntu-24.04
-    container: fedora:42
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [fedora:42, fedora:44]
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v5
       - name: Install packaging dependencies
         run: >
           dnf install -y
-          gcc git glib2-devel cairo-devel meson ninja-build pkg-config
-          rofi-devel rpm-build rpmdevtools
-      - name: Validate metadata
-        run: |
-          bash -n packaging/PKGBUILD
-          rpmspec -P packaging/rofi-universal.spec >/dev/null
-          meson_version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
-          spec_version=$(rpmspec -q --srpm --qf '%{version}' packaging/rofi-universal.spec)
-          test "$meson_version" = "$spec_version"
-      - name: Build RPM
+          gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
+          rpm-build rpmdevtools python3 xorg-x11-server-Xvfb xorg-x11-xauth
+      - name: Build RPM and verify source checksum
         run: |
           rpmdev-setuptree
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
-          tar -czf "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" \
-            --exclude=.git --exclude='build*' --exclude='*.o' \
-            --transform "s,^\.,rofi-universal-$version," .
+          expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
+          actual=$(scripts/make-source-tarball.sh "$version" "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" | awk '{print $1}')
+          test -n "$expected"
+          test "$actual" = "$expected"
           rpmbuild -ba packaging/rofi-universal.spec
+          rpm -qip "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
           rpm -qlp "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
+      - name: Install, load and remove package
+        run: |
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          mkdir -p /root/.config/rofi-universal
+          printf '[general]\n' >/root/.config/rofi-universal/config.ini
+          dnf install -y --nogpgcheck "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
+          test -f /usr/bin/rofi-universal
+          test -f /usr/lib64/rofi/libuniversal.so
+          xvfb-run -a env ROFI_UNIVERSAL_BUILD=/usr/lib64/rofi python3 tests/test_integration.py
+          dnf remove -y rofi-universal
+          test ! -e /usr/bin/rofi-universal
+          test ! -e /usr/lib64/rofi/libuniversal.so
+          test -f /root/.config/rofi-universal/config.ini
+
+  arch:
+    name: Arch Linux package lifecycle
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Prepare container
+        run: pacman -Syu --noconfirm --needed git nodejs
+      - uses: actions/checkout@v5
+      - name: Install packaging dependencies
+        run: >
+          pacman -S --noconfirm --needed
+          base-devel meson ninja rofi namcap xorg-server-xvfb python
+      - name: Build package and validate checksum
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
+          mkdir -p /tmp/srcdest
+          chown -R builder:builder /tmp/srcdest
+          su builder -c "cd '$GITHUB_WORKSPACE' && scripts/make-source-tarball.sh '$version' /tmp/srcdest/rofi-universal-$version.tar.gz"
+          actual=$(sha256sum /tmp/srcdest/rofi-universal-"$version".tar.gz | awk '{print $1}')
+          test -n "$expected"
+          test "$actual" = "$expected"
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging' && SRCDEST=/tmp/srcdest makepkg --noconfirm"
+          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name '*.pkg.tar.zst' -print -quit)
+          test -n "$pkg"
+          namcap "$pkg" | tee /tmp/namcap.log
+          ! grep -q '^E:' /tmp/namcap.log
+      - name: Install, load and remove package
+        run: |
+          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name '*.pkg.tar.zst' -print -quit)
+          pacman -U --noconfirm "$pkg"
+          test -f /usr/bin/rofi-universal
+          test -f /usr/lib/rofi/libuniversal.so
+          mkdir -p /root/.config/rofi-universal
+          printf '[general]\n' >/root/.config/rofi-universal/config.ini
+          xvfb-run -a env ROFI_UNIVERSAL_BUILD=/usr/lib/rofi python3 tests/test_integration.py
+          pacman -R --noconfirm rofi-universal
+          test ! -e /usr/bin/rofi-universal
+          test ! -e /usr/lib/rofi/libuniversal.so
+          test -f /root/.config/rofi-universal/config.ini

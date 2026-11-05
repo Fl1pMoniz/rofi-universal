@@ -6,6 +6,8 @@ removed=0
 for path in \
     "$prefix/lib/rofi/libuniversal.so" \
     "$prefix/lib64/rofi/libuniversal.so" \
+    "$prefix"/lib/*/rofi/libuniversal.so \
+    "$prefix"/lib64/*/rofi/libuniversal.so \
     "$prefix/bin/rofi-universal" \
     "$prefix/share/rofi-universal/config.example.ini"; do
     if [ -e "$path" ]; then

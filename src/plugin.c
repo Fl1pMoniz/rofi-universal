@@ -42,11 +42,6 @@ typedef struct {
 } UClipboardEntry;
 
 typedef struct {
-  char *summary;
-  gint64 fetched_at;
-} UWeatherCacheEntry;
-
-typedef struct {
   UConfig config;
   GPtrArray *results;
   GPtrArray *local_results;
@@ -63,7 +58,7 @@ typedef struct {
   GPtrArray *jobs;
   gint64 clipboard_loaded_at;
   gboolean clipboard_loading;
-  GHashTable *weather_cache;
+  UWeatherCache weather_cache;
   char *weather_pending_city;
   guint weather_pending_generation;
   char *weather_failed_city;
@@ -273,33 +268,6 @@ static void clipboard_entry_free(gpointer data) {
   g_free(entry->preview);
   g_free(entry->folded);
   g_free(entry);
-}
-
-static void weather_entry_free(gpointer data) {
-  UWeatherCacheEntry *entry = data;
-  g_free(entry->summary);
-  g_free(entry);
-}
-
-static UWeatherCacheEntry *weather_cache_lookup(UMode *mode, const char *city,
-                                                gboolean *fresh) {
-  UWeatherCacheEntry *entry =
-      g_hash_table_lookup(mode->weather_cache, city);
-  *fresh = entry != NULL &&
-           g_get_monotonic_time() - entry->fetched_at <
-               (gint64)mode->config.weather_cache_seconds * G_USEC_PER_SEC;
-  return entry;
-}
-
-static void weather_cache_store(UMode *mode, const char *city,
-                                const char *summary) {
-  if (g_hash_table_size(mode->weather_cache) >= 64) {
-    g_hash_table_remove_all(mode->weather_cache);
-  }
-  UWeatherCacheEntry *entry = g_new0(UWeatherCacheEntry, 1);
-  entry->summary = g_strdup(summary);
-  entry->fetched_at = g_get_monotonic_time();
-  g_hash_table_replace(mode->weather_cache, g_strdup(city), entry);
 }
 
 static void add_bookmark_line(UMode *mode, const char *title, const char *url) {
@@ -664,7 +632,8 @@ static void weather_finished(const char *stdout_text,
   if (mode) {
     gboolean current = mode->query_generation == job->generation;
     if (summary) {
-      weather_cache_store(mode, job->city, summary);
+      u_weather_cache_put(&mode->weather_cache, job->city, summary,
+                          g_get_monotonic_time());
       if (current) {
         g_clear_pointer(&mode->weather_pending_city, g_free);
         mode->weather_pending_generation = 0;
@@ -704,38 +673,23 @@ static void start_weather(UMode *mode, const char *city) {
   }
   gint64 now = g_get_monotonic_time();
   if (g_strcmp0(mode->weather_failed_city, city) == 0 &&
-      mode->weather_failed_at != 0 &&
-      now - mode->weather_failed_at < 30 * G_USEC_PER_SEC) {
+      u_weather_retry_backoff_active(mode->weather_failed_at, now, 30)) {
     return;
   }
-  char *curl = g_find_program_in_path("curl");
-  char *wget = curl ? NULL : g_find_program_in_path("wget");
-  if (!curl && !wget) {
-    g_free(curl);
-    g_free(wget);
+  char *fetcher_path = NULL;
+  UWeatherFetcher fetcher = u_weather_find_fetcher(&fetcher_path);
+  if (fetcher == U_WEATHER_FETCH_NONE) {
+    g_free(fetcher_path);
     return;
   }
   char *url = u_weather_summary_url(city);
-  char timeout[16];
-  g_snprintf(timeout, sizeof(timeout), "%d",
-             mode->config.weather_timeout_seconds);
-  GPtrArray *args = g_ptr_array_new();
-  if (curl) {
-    g_ptr_array_add(args, curl);
-    g_ptr_array_add(args, (gpointer)"-fsSL");
-    g_ptr_array_add(args, (gpointer)"--max-time");
-    g_ptr_array_add(args, timeout);
-    g_ptr_array_add(args, url);
-  } else {
-    g_ptr_array_add(args, wget);
-    g_ptr_array_add(args, (gpointer)"-q");
-    g_ptr_array_add(args, (gpointer)"-T");
-    g_ptr_array_add(args, timeout);
-    g_ptr_array_add(args, (gpointer)"-O");
-    g_ptr_array_add(args, (gpointer)"-");
-    g_ptr_array_add(args, url);
+  char **argv = u_weather_build_argv(
+      fetcher, fetcher_path, url, mode->config.weather_timeout_seconds);
+  if (!argv) {
+    g_free(url);
+    g_free(fetcher_path);
+    return;
   }
-  g_ptr_array_add(args, NULL);
   WeatherJob *job = g_new0(WeatherJob, 1);
   job->mode = mode;
   job->generation = mode->query_generation;
@@ -744,12 +698,11 @@ static void start_weather(UMode *mode, const char *city) {
   mode->weather_pending_city = g_strdup(city);
   mode->weather_pending_generation = mode->query_generation;
   g_ptr_array_add(mode->jobs, job);
-  u_process_run((const char *const *)args->pdata, mode->query_cancellable,
+  u_process_run((const char *const *)argv, mode->query_cancellable,
                 weather_finished, job);
-  g_ptr_array_free(args, TRUE);
+  g_strfreev(argv);
   g_free(url);
-  g_free(curl);
-  g_free(wget);
+  g_free(fetcher_path);
 }
 
 static void add_weather(UMode *mode, const char *query,
@@ -774,12 +727,12 @@ static void add_weather(UMode *mode, const char *query,
                                 U_ACTION_OPEN_URI, forecast, forecast));
   g_free(fallback_title);
   gboolean fresh = FALSE;
-  UWeatherCacheEntry *entry = weather_cache_lookup(mode, city, &fresh);
-  if (entry && fresh) {
-    add_result(mode, u_result_new(U_PROVIDER_WEATHER, entry->summary,
+  const char *summary = u_weather_cache_get(
+      &mode->weather_cache, city, g_get_monotonic_time(), &fresh);
+  if (summary && fresh) {
+    add_result(mode, u_result_new(U_PROVIDER_WEATHER, summary,
                                   "Weather · wttr.in", "weather-clear", 700,
-                                  U_ACTION_OPEN_URI, forecast,
-                                  entry->summary));
+                                  U_ACTION_OPEN_URI, forecast, summary));
   } else {
     start_weather(mode, city);
   }
@@ -1357,8 +1310,8 @@ static int universal_init(Mode *sw) {
   mode->bookmarks = g_ptr_array_new_with_free_func(bookmark_free);
   mode->clipboard_entries =
       g_ptr_array_new_with_free_func(clipboard_entry_free);
-  mode->weather_cache = g_hash_table_new_full(
-      g_str_hash, g_str_equal, g_free, weather_entry_free);
+  u_weather_cache_init(&mode->weather_cache,
+                       mode->config.weather_cache_seconds, 64);
   mode->jobs = g_ptr_array_new();
   mode->life_cancellable = g_cancellable_new();
   mode->query_cancellable = g_cancellable_new();
@@ -1399,7 +1352,7 @@ static void universal_destroy(Mode *sw) {
   g_ptr_array_free(mode->apps, TRUE);
   g_ptr_array_free(mode->bookmarks, TRUE);
   g_ptr_array_free(mode->clipboard_entries, TRUE);
-  g_hash_table_destroy(mode->weather_cache);
+  u_weather_cache_clear(&mode->weather_cache);
   g_free(mode->weather_pending_city);
   g_free(mode->weather_failed_city);
   g_free(mode->query);

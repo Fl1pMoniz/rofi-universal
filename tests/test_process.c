@@ -56,6 +56,19 @@ static void test_cancelled(void) {
   g_main_loop_unref(test.loop);
 }
 
+static void test_failed(void) {
+  ProcessTest test = {0};
+  test.loop = g_main_loop_new(NULL, FALSE);
+  const char *argv[] = {"/bin/sh", "-c", "printf bad; exit 2", NULL};
+  u_process_run(argv, NULL, process_done, &test);
+  g_main_loop_run(test.loop);
+  g_assert_false(test.success);
+  g_assert_cmpint(test.exit_status, ==, 2);
+  g_assert_cmpstr(test.stdout_text, ==, "bad");
+  g_free(test.stdout_text);
+  g_main_loop_unref(test.loop);
+}
+
 static void test_spawn_failure(void) {
   ProcessTest test = {0};
   test.loop = g_main_loop_new(NULL, FALSE);
@@ -71,6 +84,7 @@ int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
   g_test_add_func("/process/success", test_success);
   g_test_add_func("/process/cancelled", test_cancelled);
+  g_test_add_func("/process/failed", test_failed);
   g_test_add_func("/process/spawn-failure", test_spawn_failure);
   return g_test_run();
 }

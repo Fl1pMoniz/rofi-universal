@@ -57,10 +57,16 @@ results.
 
 Inline weather uses a dedicated `WeatherJob` (mode pointer, query generation and
 city). The request is a `curl` or `wget` subprocess with a bounded timeout. Parsed
-summaries are cached in memory for `[weather] cache_seconds`, failed cities back
-off briefly, and stale-generation results may be cached but are never inserted
-into the current result list. If curl/wget or the network is unavailable, the
-external wttr.in action remains.
+summaries are stored in `src/weather.c`'s bounded in-memory cache for
+`[weather] cache_seconds`; the oldest entry is evicted when the cache is full.
+Failed cities back off briefly, and stale-generation results may be cached but
+are never inserted into the current result list. If curl/wget or the network is
+unavailable, the external wttr.in action remains.
+
+`src/weather.c` also owns the cache, retry-backoff, fetcher-selection and
+weather-command construction helpers. These are tested without network access.
+The process helper reports non-zero exits as failures, so failed curl/wget
+requests never become weather results.
 
 On plugin destruction, all jobs have their mode pointer cleared, cancellables are
 cancelled, and result/cache arrays are released. Late callbacks free their job

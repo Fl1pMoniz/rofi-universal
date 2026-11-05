@@ -3,6 +3,41 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.3.1] - 2026-11-05
+
+### Added
+
+- Arch Linux packaging validation in CI, including `makepkg`, `namcap`, package
+  installation, plugin loading and removal.
+- Fedora 42 and 44 RPM package lifecycle tests: build, install, plugin loading,
+  removal and user-configuration preservation.
+- Deterministic source-tarball generation and pinned SHA-256 verification for
+  release archives.
+- Weather cache, retry-backoff, fetcher-selection and command-construction tests.
+- Rofi plugin loading tests under Xvfb with Rofi 1.7.9 (Fedora 42) and Rofi
+  2.0.0 (Fedora 44 and Arch Linux).
+
+### Changed
+
+- Moved weather cache state into `src/weather.c` with bounded capacity and
+  oldest-entry eviction.
+- Weather response parsing now rejects invalid UTF-8, missing numeric
+  temperature fields and responses without a temperature unit.
+- The install/uninstall scripts now recognise multiarch `lib/*/rofi` plugin
+  directories.
+- The Arch PKGBUILD uses a pinned checksum for the immutable release archive.
+- The RPM spec builds from the same verified release archive.
+
+### Fixed
+
+- Non-zero subprocess exits are now reported as failures instead of successful
+  communication.
+- Failed weather requests cannot leave the provider stuck; retry backoff is
+  bounded and cache entries remain limited.
+- The Arch package no longer uses the `SKIP` checksum placeholder.
+- User configuration is preserved across package removal and installer
+  uninstallation.
+
 ## [0.3.0] - 2026-11-05
 
 ### Added
