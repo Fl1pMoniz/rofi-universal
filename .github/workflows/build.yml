@@ -94,6 +94,8 @@ jobs:
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
           actual=$(scripts/make-source-tarball.sh "$version" "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" | awk '{print $1}')
+          echo "expected=$expected"
+          echo "actual=$actual"
           test -n "$expected"
           test "$actual" = "$expected"
           rpmbuild -ba packaging/rofi-universal.spec
