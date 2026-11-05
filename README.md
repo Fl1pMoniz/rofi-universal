@@ -14,22 +14,29 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 ## Features
 
 - **Live combined results** from all enabled providers as you type.
-- **Automatic intent detection** with simple, maintainable rules.
+- **Independent provider relevance scoring** with simple, maintainable rules:
+  intents are no longer exclusive, so one query can produce useful app, file,
+  calculator, web and clipboard results at the same time.
 - **Applications** from the freedesktop desktop-entry database.
 - **Calculator** through `qalc` from Qalculate!: arithmetic, equations,
   percentages, units and currency conversion (`500 EUR to USD`, `10 km to miles`).
 - **Web search** with DuckDuckGo, Google, Brave, Bing, Startpage or a custom URL
   template; supports URLs and `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`
   and `!define` shortcuts.
-- **Files** through direct path expansion and optional `fd` search.
-- **Clipboard history** through `cliphist`, searched with a `clip ` prefix.
+- **Files** through direct path expansion and asynchronous optional `fd` search.
+- **Clipboard history** through `cliphist`, with explicit `clip ` search and
+  optional low-priority automatic matching. The history is cached in memory and
+  never written to disk by the launcher.
 - **Dictionary** shortcuts for `define <word>`.
 - **GitHub** search for `github <query>` or `gh <query>`.
 - **Weather** shortcuts for `weather in <city>` via wttr.in.
 - **Bookmarks** from Chromium-family JSON stores and Firefox/Zen SQLite stores
-  when `jq` and `sqlite3` are available.
+  when `jq` and `sqlite3` are available, loaded in the background.
 - **Keyboard-first**: `Enter` runs the selected result; `Shift+Enter` copies its
   URL, path, value or title to the clipboard.
+- **Non-blocking lifecycle**: file searches, clipboard refresh, bookmark loading
+  and `qalc` run asynchronously. New queries cancel obsolete work and stale
+  callbacks are rejected by generation checks.
 
 ## Screenshot
 
@@ -40,7 +47,7 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 ### Required
 
 - Rofi **1.7.6+** with plugin support (tested with Rofi **2.0.0** on Fedora/Nobara
-  and Hyprland/Wayland)
+  and Hyprland/Wayland; CI builds against Fedora 42's Rofi package)
 - GLib/GIO development headers, a C compiler, Meson and Ninja
 - `qalc` from [Qalculate!](https://qalculate.github.io/) for calculations,
   units and currency conversion
@@ -172,6 +179,8 @@ max_depth=4
 max_results=8
 
 [clipboard]
+automatic=false
+cache_seconds=30
 max_results=10
 ```
 
@@ -213,19 +222,42 @@ and are not queried.
 
 ## How it works
 
-`rofi-universal` is a native Rofi mode plugin (`src/plugin.c`). It uses Rofi's
+`rofi-universal` is a native Rofi mode plugin. It uses Rofi's
 `_preprocess_input` callback, which runs on every edit, to rebuild a shared result
 list and call `rofi_view_reload()`. That is what gives live updates in one mode.
-A small core library (`src/universal.c`) owns intent classification, URL building,
-configuration and ranking, and is covered by unit tests.
 
-Ranking is deliberately simple:
+Source layout:
 
-1. Each provider gives results a match score.
-2. The detected intent adds a provider-specific boost.
-3. Results are sorted by score, then provider and title.
-4. Local providers never wait for the network. `qalc` runs asynchronously; its
-   result appears when ready.
+```text
+src/
+  plugin.c       Rofi callbacks, providers, actions and result merging
+  query.c        Query analysis, provider relevance and scoring signals
+  process.c      Cancellable asynchronous subprocess capture
+  universal.c    Result model, URL building and configuration
+  universal.h    Shared interfaces
+tests/
+  test_core.c    Query, ranking, URL and configuration tests
+  test_process.c Async process success, cancellation and failure tests
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the provider and async
+lifecycle details.
+
+Query analysis produces independent signals for applications, calculations, web
+search, files, clipboard, dictionary, GitHub and weather. A query can be relevant
+to several providers; there is no single provider-suppressing intent. Ranking
+combines match quality, provider relevance and a local-action bonus:
+
+1. Exact title, prefix and token matches produce a match score.
+2. The query analysis adds provider relevance.
+3. Local providers get a small preference over external actions.
+4. Results are sorted deterministically by score, provider and title.
+
+Async work uses a query-generation counter and a per-query `GCancellable`.
+Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh
+and bookmark loading run through `src/process.c`; obsolete processes are cancelled
+and callbacks for older generations are ignored. Bookmark and clipboard data are
+held only in memory for the plugin's lifetime.
 
 No prompt is sent to an AI model. No daemon runs in the background. Network access
 only happens when `qalc` refreshes exchange rates or when the user chooses a web
@@ -233,13 +265,16 @@ action. Bookmark stores are read locally.
 
 ## Extending
 
-Providers live in `src/plugin.c`:
+Providers share the live mode state, so their result-building code remains in
+`src/plugin.c` with a shared `UResult` representation. Query signals and scoring
+live in `src/query.c`; reusable process execution lives in `src/process.c`.
 
 1. Add a score/action in the provider function.
 2. Add a `U_PROVIDER_*` value in `src/universal.h` if needed.
-3. Add intent detection or a ranking boost in `src/universal.c`.
-4. Add a test in `tests/test_core.c`.
-5. Run `meson test -C build` and an interactive smoke test.
+3. Add provider relevance in `src/query.c`.
+4. Use `u_process_run()` for subprocess work; never block the UI.
+5. Add a test in `tests/test_core.c` or `tests/test_process.c`.
+6. Run `meson test -C build` and an interactive smoke test.
 
 Please keep new providers local-first and dependency-tolerant. A missing tool
 must never prevent the rest of the launcher from working.
@@ -252,8 +287,10 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-The core tests check classification, URL encoding, ranking, configuration and
-invalid input. An interactive smoke test can be run on Wayland:
+The core tests check query analysis, URL encoding, provider relevance, ranking,
+configuration and invalid input. The process tests check asynchronous success,
+cancellation and spawn failures without network access. An interactive smoke test
+can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -278,9 +315,11 @@ Install `fd`. File search is limited by `max_depth`, `max_results` and a short
 timeout so the launcher stays responsive. Direct paths always work.
 
 **Clipboard results are empty**
-Install `cliphist` and `wl-clipboard`. Clipboard search is intentionally opt-in
-with the `clip ` prefix to avoid showing clipboard contents in unrelated searches.
-Disable it entirely with `providers.clipboard=false`.
+Install `cliphist` and `wl-clipboard`. Explicit search uses the `clip ` prefix.
+Set `[clipboard] automatic=true` to include low-ranked clipboard matches in normal
+searches. Automatic matching is off by default because clipboard history may
+contain sensitive data. Disable the provider entirely with
+`providers.clipboard=false`.
 
 **Bookmarks are missing**
 Only Chromium-family JSON bookmarks and Firefox/Zen SQLite bookmarks are read.

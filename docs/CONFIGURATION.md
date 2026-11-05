@@ -75,12 +75,20 @@ opened without `fd`.
 
 ```ini
 [clipboard]
+automatic=false
+cache_seconds=30
 max_results=10
 ```
 
-Only entries matching `clip <text>` are shown. Selecting an entry decodes it with
-`cliphist` and copies it to the Wayland clipboard with `wl-copy` (or X11
-`xclip`/`xsel`).
+Only entries matching `clip <text>` are shown by default. Selecting an entry
+decodes it with `cliphist` and copies it to the Wayland clipboard with `wl-copy`
+(or X11 `xclip`/`xsel`).
+
+Set `automatic=true` to also include clipboard matches in normal searches. These
+results are deliberately ranked below applications and calculations. Automatic
+matching is off by default because clipboard history can contain passwords or
+private text. The cliphist list is cached in memory for `cache_seconds` and is
+never written to a persistent cache by the launcher.
 
 ## Ranking and intent detection
 
@@ -93,9 +101,15 @@ Intent detection is intentionally small and predictable:
 - A single word with no special form is treated as an application query.
 - Other multi-word queries are web queries.
 
-The detected intent adds a provider-specific score boost. Providers also score
-matches by exact title, prefix and substring. Local results never wait for the
-network. qalc runs asynchronously and its result is inserted when ready.
+Each provider receives an independent relevance signal. A query can be relevant
+to applications, files, calculations, web search and clipboard at the same time;
+there is no single intent that suppresses the others. Providers score matches by
+exact title, prefix, keyword, executable and token matches. Ranking combines the
+provider relevance, match quality and a small local-action preference.
+
+Local results render immediately. qalc, fd, clipboard refresh and bookmark
+loading run asynchronously. A new query cancels obsolete work, and callbacks from
+older query generations are ignored.
 
 ## Rofi theme
 

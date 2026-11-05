@@ -41,8 +41,9 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Prefer documented command-line tools over copied source code.
 - Local results must not block on network requests.
 - Missing optional dependencies must degrade gracefully.
-- Add or update tests in `tests/test_core.c` for classification, ranking,
-  configuration or URL changes.
+- Add or update tests in `tests/test_core.c` for query analysis, ranking,
+  configuration or URL changes. Add process tests in `tests/test_process.c` for
+  async behavior.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration

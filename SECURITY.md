@@ -22,12 +22,17 @@ Include:
 
 `rofi-universal` is a local launcher, but it touches sensitive surfaces:
 
-- **Clipboard history** is intentionally searched only with the `clip ` prefix.
-  Clipboard entries can contain passwords, tokens or private text. Users can
-  disable the provider with `providers.clipboard=false`.
+- **Clipboard history** is searched explicitly with the `clip ` prefix. Optional
+  automatic matching is disabled by default (`[clipboard] automatic=false`) and
+  gives clipboard results a low ranking. Clipboard entries can contain passwords,
+  tokens or private text. Users can disable the provider with
+  `providers.clipboard=false`. The cliphist list is held in memory only and is not
+  logged or written to a persistent cache by the launcher.
 - **Subprocesses** are spawned with argument arrays, not through a shell. The
   configured `open_command` is parsed with `g_shell_parse_argv`; treat the
-  configuration file as trusted local input.
+  configuration file as trusted local input. Asynchronous subprocesses are
+  cancellable, and their callbacks are ignored when their query generation is
+  stale or the plugin has been destroyed.
 - **Network access** is limited to qalc exchange-rate updates and to opening web
   actions chosen by the user. The launcher does not send queries to an AI service.
 - **Desktop files and bookmarks** are local data. A malicious desktop entry can
