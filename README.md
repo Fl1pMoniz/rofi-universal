@@ -42,6 +42,10 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ![rofi-universal showing a currency calculation and a web action](docs/screenshot.png)
 
+## Demo
+
+![Animated demo: applications, calculator, currency, units, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
+
 ## Requirements
 
 ### Required
