@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.9.0',
+  version: '1.0.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )

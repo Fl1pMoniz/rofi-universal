@@ -1,6 +1,6 @@
 # Provider support matrix
 
-This matrix describes the providers shipped with rofi-universal 0.9.0. Status
+This matrix describes the providers shipped with rofi-universal 1.0.0. Status
 reflects the current implementation and test coverage, not a promise of
 compatibility with every desktop environment.
 
@@ -34,7 +34,11 @@ compatibility with every desktop environment.
 - If FileManager1 is unavailable, the containing directory is opened through the
   default desktop handler.
 - File-manager success depends on the live desktop; CI uses a mock service for
-  the protocol and a fake handler for the fallback.
+  the protocol and a fake handler for the fallback. Manual Hyprland/Wayland
+  testing with Dolphin 26.08.1 opened Dolphin through `ShowItems` for a temporary
+  file containing spaces and Unicode; a directory and a missing-file fallback
+  opened through Thunar's default handler. Exact item selection was not
+  programmatically asserted.
 - No reveal-in-file-manager action is available when both FileManager1 and the
   default handler are unavailable.
 

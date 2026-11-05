@@ -74,8 +74,9 @@ interaction and result presentation; v0.3 added inline weather, v0.4 improved
 ranking and search categories, v0.5 added inline dictionary definitions, v0.6
 improved URL recognition and action-oriented descriptions, v0.7 added file
 reveal actions and bounded clipboard decoding, v0.8 added reliability and
-query-regression coverage, and v0.9 adds verified Ubuntu 26.04/Debian testing
-source installation and a provider support matrix.
+query-regression coverage, v0.9 added verified Ubuntu 26.04/Debian testing
+source installation and a provider support matrix, and v1.0 is the first stable
+release.
 
 ## Requirements
 
@@ -145,7 +146,9 @@ Rofi 1.7.6, and are not supported.
   uninstall verified.
 - Debian testing with Rofi 2.0.0: source build, install, plugin loading and
   uninstall verified.
-- Local Wayland/Hyprland with Rofi 2.0.0: interactive manual testing.
+- Local Wayland/Hyprland with Rofi 2.0.0: interactive manual testing, including
+  real FileManager1 reveal with Dolphin 26.08.1 and default-handler directory
+  fallback with Thunar.
 
 Debian stable and Ubuntu 24.04 ship Rofi 1.7.5 and are not supported. CI also
 runs the source-install and plugin-load lifecycle on Ubuntu 26.04 LTS and Debian

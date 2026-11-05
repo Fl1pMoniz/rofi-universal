@@ -3,6 +3,35 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [1.0.0] - 2026-11-05
+
+### Stable
+
+- First stable release. No new providers or user-facing features were added in
+  this milestone.
+- Final audit completed with 6 Meson suites / 77 tests, GCC and Clang builds,
+  GCC `-fanalyzer`, ASan/UBSan, Xvfb integration tests, Fedora RPM lifecycle,
+  Arch package lifecycle, and Ubuntu 26.04 LTS / Debian testing source-install
+  and plugin-load checks.
+- Real FileManager1 reveal was manually verified on Hyprland/Wayland with
+  Dolphin 26.08.1 for paths containing spaces and Unicode. Directory and
+  missing-file fallback behavior was manually verified through Thunar. Exact
+  item selection was not programmatically asserted.
+- The provider support matrix and installation boundaries are documented in
+  `docs/PROVIDERS.md` and `docs/INSTALL.md`.
+- Existing configuration and keyboard behavior remain compatible: Enter,
+  Shift+Enter and Alt+1 retain their established actions.
+
+### Limitations
+
+- Debian stable and Ubuntu 24.04 ship Rofi 1.7.5 and remain unsupported.
+- Debian-family installation is source-only; no `.deb` package is provided.
+- Clipboard remains text-only with a 5-second timeout and 4 MiB cap.
+- GitHub inline API results and web previews remain deferred.
+- FileManager1 compatibility is verified with the tested Dolphin/Thunar setup,
+  not every Linux desktop.
+- Benchmarks remain local reference measurements, not guarantees.
+
 ## [0.9.0] - 2026-11-05
 
 ### Added
