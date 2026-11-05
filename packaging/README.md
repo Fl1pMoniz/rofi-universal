@@ -35,10 +35,11 @@ sudo dnf builddep packaging/rofi-universal.spec
 rpmbuild -ba packaging/rofi-universal.spec
 ```
 
-`Requires: rofi` is mandatory. Calculator, file, clipboard, bookmark and inline
-weather dependencies are weak `Recommends`, so the plugin installs and degrades
-gracefully without them. The RPM is built, installed and removed in Fedora 42
-and Fedora 44 CI. It is not published in Fedora or Nobara repositories.
+`Requires: rofi` and `Requires: json-glib` are mandatory. Calculator, file,
+clipboard, bookmark and inline weather/dictionary tools are weak `Recommends`, so
+the plugin installs and degrades gracefully without them. The RPM is built,
+installed and removed in Fedora 42 and Fedora 44 CI. It is not published in
+Fedora or Nobara repositories.
 
 ## Arch Linux
 
@@ -50,8 +51,8 @@ makepkg -si
 ```
 
 The package is built, installed, loaded under Xvfb and removed in an Arch Linux
-container in CI. `namcap` is run on the resulting package. Optional dependencies
-are listed in `optdepends`; they are not required to install the plugin.
+container in CI. `namcap` is run on the resulting package. `json-glib` is a
+runtime dependency; optional provider tools are listed in `optdepends`.
 
 ## Validation status
 

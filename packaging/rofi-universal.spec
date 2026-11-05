@@ -1,5 +1,5 @@
 Name:           rofi-universal
-Version:        0.4.0
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
@@ -16,8 +16,10 @@ BuildRequires:  pkgconfig(gio-2.0)
 BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(gmodule-2.0)
 BuildRequires:  pkgconfig(cairo)
+BuildRequires:  pkgconfig(json-glib-1.0) >= 1.6
 
 Requires:       rofi
+Requires:       json-glib
 Recommends:     qalculate
 Recommends:     fd-find
 Recommends:     cliphist
@@ -55,6 +57,10 @@ tools, and does not require a background daemon or an AI service.
 %{_datadir}/rofi-universal/config.example.ini
 
 %changelog
+* Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.5.0-1
+- Update to rofi-universal 0.5.0.
+- Add inline dictionary and bounded subprocess output support.
+
 * Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.4.0-1
 - Update to rofi-universal 0.4.0.
 - Include search ranking, provider result and reliability improvements.
