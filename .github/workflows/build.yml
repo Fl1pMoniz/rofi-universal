@@ -84,8 +84,9 @@ jobs:
       - name: Install packaging dependencies
         run: >
           dnf install -y
-          gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
-          rpm-build rpmdevtools python3 xorg-x11-server-Xvfb xorg-x11-xauth
+          gcc git glib2-devel cairo-devel meson ninja-build pkg-config
+          rofi-devel rpm-build rpmdevtools python3 xorg-x11-server-Xvfb
+          xorg-x11-xauth
       - name: Build RPM and verify source checksum
         run: |
           rpmdev-setuptree
@@ -136,13 +137,13 @@ jobs:
           test -n "$expected"
           test "$actual" = "$expected"
           su builder -c "cd '$GITHUB_WORKSPACE/packaging' && SRCDEST=/tmp/srcdest makepkg --noconfirm"
-          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name '*.pkg.tar.zst' -print -quit)
+          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name 'rofi-universal-[0-9]*.pkg.tar.zst' -print -quit)
           test -n "$pkg"
           namcap "$pkg" | tee /tmp/namcap.log
           ! grep -q '^E:' /tmp/namcap.log
       - name: Install, load and remove package
         run: |
-          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name '*.pkg.tar.zst' -print -quit)
+          pkg=$(find "$GITHUB_WORKSPACE/packaging" -name 'rofi-universal-[0-9]*.pkg.tar.zst' -print -quit)
           pacman -U --noconfirm "$pkg"
           test -f /usr/bin/rofi-universal
           test -f /usr/lib/rofi/libuniversal.so
