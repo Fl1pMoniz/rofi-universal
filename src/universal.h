@@ -72,6 +72,9 @@ typedef struct {
   gboolean clipboard;
   gboolean clipboard_automatic;
   int clipboard_cache_seconds;
+  char *weather_location;
+  int weather_cache_seconds;
+  int weather_timeout_seconds;
   gboolean dictionary;
   gboolean github;
   gboolean weather;

@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.2.0',
+  version: '0.3.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -14,7 +14,7 @@ deps = [rofi, glib, gio, gio_unix, dependency('gmodule-2.0'), dependency('cairo'
 
 shared_module(
   'universal',
-  ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c'],
+  ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c', 'src/weather.c'],
   dependencies: deps,
   install: true,
   install_dir: get_option('libdir') / 'rofi',
@@ -47,3 +47,11 @@ test_process = executable(
   include_directories: include_directories('src'),
 )
 test('process', test_process)
+
+test_weather = executable(
+  'test-weather',
+  ['tests/test_weather.c', 'src/weather.c'],
+  dependencies: [glib],
+  include_directories: include_directories('src'),
+)
+test('weather', test_weather)

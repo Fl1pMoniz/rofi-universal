@@ -138,6 +138,19 @@ static int calc_relevance(const char *text) {
   return 0;
 }
 
+static gboolean looks_like_web_intent(const char *folded) {
+  const char *words[] = {"how to", "guide", "documentation", "docs",
+                         "features", "configuration", "config", "tutorial",
+                         "install", "setup", "troubleshoot", "error", "fix",
+                         NULL};
+  for (int i = 0; words[i]; i++) {
+    if (strstr(folded, words[i])) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
 static int app_shape_score(const char *folded, int spaces) {
   if (!folded || !*folded) {
     return 0;
@@ -203,7 +216,8 @@ void u_analyze_query(const char *query, UQueryAnalysis *analysis) {
     analysis->explicit_provider = U_PROVIDER_GITHUB;
     goto done;
   }
-  if (g_str_has_prefix(folded, "weather ") ||
+  if (g_strcmp0(folded, "weather") == 0 ||
+      g_str_has_prefix(folded, "weather ") ||
       g_str_has_prefix(folded, "weather in ")) {
     analysis->weather_score = 1100;
     analysis->web_score = 150;
@@ -242,6 +256,9 @@ void u_analyze_query(const char *query, UQueryAnalysis *analysis) {
     analysis->app_score = MIN(analysis->app_score, 150);
     analysis->intent = U_INTENT_CALC;
     goto done;
+  }
+  if (spaces > 0 && looks_like_web_intent(folded)) {
+    analysis->web_score = MAX(analysis->web_score, 750);
   }
   if (analysis->app_score >= 500) {
     analysis->intent = U_INTENT_APP;

@@ -210,6 +210,9 @@ void u_config_init(UConfig *config) {
   config->clipboard = TRUE;
   config->clipboard_automatic = FALSE;
   config->clipboard_cache_seconds = 30;
+  config->weather_location = g_strdup("");
+  config->weather_cache_seconds = 600;
+  config->weather_timeout_seconds = 4;
   config->dictionary = TRUE;
   config->github = TRUE;
   config->weather = TRUE;
@@ -256,6 +259,14 @@ gboolean u_config_load(UConfig *config, const char *path) {
       file, "clipboard", "cache_seconds", config->clipboard_cache_seconds);
   config->clipboard_cache_seconds =
       CLAMP(config->clipboard_cache_seconds, 1, 3600);
+  config->weather_cache_seconds =
+      key_int(file, "weather", "cache_seconds", config->weather_cache_seconds);
+  config->weather_cache_seconds =
+      CLAMP(config->weather_cache_seconds, 30, 86400);
+  config->weather_timeout_seconds = key_int(
+      file, "weather", "timeout_seconds", config->weather_timeout_seconds);
+  config->weather_timeout_seconds =
+      CLAMP(config->weather_timeout_seconds, 1, 15);
   config->dictionary =
       key_bool(file, "providers", "dictionary", config->dictionary);
   config->github = key_bool(file, "providers", "github", config->github);
@@ -288,6 +299,9 @@ gboolean u_config_load(UConfig *config, const char *path) {
   value = key_string(file, "files", "roots", config->file_roots);
   g_free(config->file_roots);
   config->file_roots = value;
+  value = key_string(file, "weather", "location", config->weather_location);
+  g_free(config->weather_location);
+  config->weather_location = value;
   g_key_file_free(file);
   g_free(own_path);
   return TRUE;
@@ -301,6 +315,7 @@ void u_config_clear(UConfig *config) {
   g_free(config->web_engine);
   g_free(config->open_command);
   g_free(config->file_roots);
+  g_free(config->weather_location);
   memset(config, 0, sizeof(*config));
 }
 

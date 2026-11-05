@@ -14,6 +14,7 @@ static void test_calculable(void) {
   g_assert_true(u_query_looks_calculable("1/2"));
   g_assert_true(u_query_looks_calculable("150 to hex"));
   g_assert_true(u_query_looks_calculable("10 in binary"));
+  g_assert_true(u_query_looks_calculable("25% of 180"));
   g_assert_false(u_query_looks_calculable("firefox"));
   g_assert_false(u_query_looks_calculable("hyprland configuration"));
   g_assert_false(u_query_looks_calculable("python3"));
@@ -89,8 +90,31 @@ static void test_analysis(void) {
 
   u_analyze_query("linux hyprland configuration", &analysis);
   g_assert_cmpint(analysis.calc_score, <, 600);
-  g_assert_cmpint(analysis.web_score, >=, 600);
+  g_assert_cmpint(analysis.web_score, >=, 750);
   g_assert_cmpint(analysis.intent, ==, U_INTENT_WEB);
+
+  u_analyze_query("python 3.14 features", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+  g_assert_cmpint(analysis.intent, ==, U_INTENT_WEB);
+
+  u_analyze_query("25% of 180", &analysis);
+  g_assert_cmpint(analysis.calc_score, >=, 600);
+
+  u_analyze_query("weather in Lisbon", &analysis);
+  g_assert_cmpint(analysis.weather_score, >=, 600);
+
+  u_analyze_query("weather", &analysis);
+  g_assert_cmpint(analysis.weather_score, >=, 600);
+
+  u_analyze_query("github hyprwhispr", &analysis);
+  g_assert_cmpint(analysis.github_score, >=, 600);
+
+  u_analyze_query("steam", &analysis);
+  g_assert_cmpint(analysis.app_score, >=, 500);
+
+  u_analyze_query("report.pdf", &analysis);
+  g_assert_cmpint(analysis.file_score, >=, 600);
 
   u_analyze_query("python", &analysis);
   g_assert_cmpint(analysis.app_score, >=, 500);
@@ -194,6 +218,9 @@ static void test_config(void) {
   g_assert_true(config.calculator);
   g_assert_false(config.clipboard_automatic);
   g_assert_cmpint(config.clipboard_cache_seconds, ==, 30);
+  g_assert_cmpstr(config.weather_location, ==, "");
+  g_assert_cmpint(config.weather_cache_seconds, ==, 600);
+  g_assert_cmpint(config.weather_timeout_seconds, ==, 4);
   u_config_clear(&config);
 
   char *path = NULL;
@@ -206,7 +233,8 @@ static void test_config(void) {
       "[general]\nmax_results=12\nweb_engine=google\n"
       "[providers]\ncalculator=false\nclipboard=false\n"
       "[files]\nmax_depth=2\nroots=/tmp\n"
-      "[clipboard]\nautomatic=true\ncache_seconds=5\nmax_results=3\n";
+      "[clipboard]\nautomatic=true\ncache_seconds=5\nmax_results=3\n"
+      "[weather]\nlocation=Porto\ncache_seconds=120\ntimeout_seconds=2\n";
   g_assert_true(g_file_set_contents(path, content, -1, &error));
   g_assert_no_error(error);
   u_config_init(&config);
@@ -221,6 +249,19 @@ static void test_config(void) {
   g_assert_true(config.clipboard_automatic);
   g_assert_cmpint(config.clipboard_cache_seconds, ==, 5);
   g_assert_cmpint(config.clipboard_max_results, ==, 3);
+  g_assert_cmpstr(config.weather_location, ==, "Porto");
+  g_assert_cmpint(config.weather_cache_seconds, ==, 120);
+  g_assert_cmpint(config.weather_timeout_seconds, ==, 2);
+  u_config_clear(&config);
+
+  content = "[weather]\ncache_seconds=1\ntimeout_seconds=99\n";
+  g_assert_true(g_file_set_contents(path, content, -1, &error));
+  g_assert_no_error(error);
+  u_config_init(&config);
+  g_assert_true(u_config_load(&config, path));
+  g_assert_cmpstr(config.weather_location, ==, "");
+  g_assert_cmpint(config.weather_cache_seconds, ==, 30);
+  g_assert_cmpint(config.weather_timeout_seconds, ==, 15);
   u_config_clear(&config);
   g_remove(path);
   g_free(path);
