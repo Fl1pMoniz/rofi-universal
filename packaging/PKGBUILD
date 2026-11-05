@@ -1,6 +1,6 @@
 # Maintainer: Fl1pMoniz <fl1pmoniz@users.noreply.github.com>
 pkgname=rofi-universal
-pkgver=0.8.0
+pkgver=0.9.0
 pkgrel=1
 pkgdesc="Unified search mode for Rofi inspired by KRunner and Spotlight"
 arch=('x86_64' 'aarch64')
@@ -20,7 +20,7 @@ optdepends=(
   'wget: inline weather fallback'
 )
 source=("$pkgname-$pkgver.tar::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar")
-sha256sums=('db633d41bc2a29350ae09272aa148e16086f11e22fc45fde920d4b72467d2e00')
+sha256sums=('eecf429c3032887b9b0919f0ca7829f3b2835bca36536bbcc6aa3f24c5fbd052')
 
 build() {
   cd "$pkgname-$pkgver"

@@ -2,7 +2,8 @@
 
 These files package the Meson build for distributions that are not covered by
 the generic installer. They are maintained in-tree so that release tarballs and
-downstream review use the same build description as the project.
+downstream review use the same build description as the project. Debian-family
+installations currently use the source installer; no `.deb` package is provided.
 
 ## Source archives and checksums
 
