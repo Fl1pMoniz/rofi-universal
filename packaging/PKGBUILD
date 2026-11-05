@@ -1,13 +1,13 @@
 # Maintainer: Fl1pMoniz <fl1pmoniz@users.noreply.github.com>
 pkgname=rofi-universal
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Unified search mode for Rofi inspired by KRunner and Spotlight"
 arch=('x86_64' 'aarch64')
 url="https://github.com/Fl1pMoniz/rofi-universal"
 license=('MIT')
-depends=('rofi' 'glib2' 'cairo' 'gcc-libs')
-makedepends=('meson' 'ninja' 'gcc' 'pkgconf')
+depends=('rofi' 'glib2' 'bash')
+makedepends=('meson' 'ninja' 'gcc' 'pkgconf' 'cairo')
 optdepends=(
   'qalculate: calculations, units and currency'
   'fd: asynchronous file search'
@@ -19,8 +19,8 @@ optdepends=(
   'curl: inline weather'
   'wget: inline weather fallback'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('SKIP')
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('3bf6159677f99dcb2afd06cde7eab18678396cde486f666638b04f77051f1fe2')
 
 build() {
   cd "$pkgname-$pkgver"
@@ -36,4 +36,5 @@ check() {
 package() {
   cd "$pkgname-$pkgver"
   meson install -C build --destdir "$pkgdir"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

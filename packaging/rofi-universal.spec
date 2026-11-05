@@ -1,11 +1,11 @@
 Name:           rofi-universal
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
 License:        MIT
 URL:            https://github.com/Fl1pMoniz/rofi-universal
-Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
+Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar.gz
 
 BuildRequires:  gcc
 BuildRequires:  meson
@@ -55,5 +55,9 @@ tools, and does not require a background daemon or an AI service.
 %{_datadir}/rofi-universal/config.example.ini
 
 %changelog
+* Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.3.1-1
+- Update to rofi-universal 0.3.1.
+- Build from the verified release source archive.
+
 * Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.3.0-1
 - Initial RPM packaging for rofi-universal 0.3.0.
