@@ -73,8 +73,9 @@ The demo was recorded against v0.2.0. Later releases keep the same keyboard-firs
 interaction and result presentation; v0.3 added inline weather, v0.4 improved
 ranking and search categories, v0.5 added inline dictionary definitions, v0.6
 improved URL recognition and action-oriented descriptions, v0.7 added file
-reveal actions and bounded clipboard decoding, and v0.8 adds reliability and
-query-regression coverage.
+reveal actions and bounded clipboard decoding, v0.8 added reliability and
+query-regression coverage, and v0.9 adds verified Ubuntu 26.04/Debian testing
+source installation and a provider support matrix.
 
 ## Requirements
 
@@ -118,7 +119,7 @@ sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalcu
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
 
-### Debian / Ubuntu
+### Ubuntu 26.04 LTS / Debian testing
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
@@ -127,16 +128,31 @@ sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
 
+Source build, installation, Rofi plugin loading and uninstallation were verified
+in Ubuntu 26.04 LTS and Debian testing with Rofi 2.0.0. No `.deb` package is
+currently provided; use the generic installer below.
+
+Debian stable and Ubuntu 24.04 currently ship Rofi 1.7.5, below the required
+Rofi 1.7.6, and are not supported.
+
 ### Tested environments
 
 - Fedora 42 with Rofi 1.7.9: compiled and plugin-loaded in CI.
 - Fedora 44 with Rofi 2.0.0: compiled and plugin-loaded in CI.
 - Arch Linux current with Rofi 2.0.0: package built, installed, plugin-loaded
   and removed in an Arch container in CI.
+- Ubuntu 26.04 LTS with Rofi 2.0.0: source build, install, plugin loading and
+  uninstall verified.
+- Debian testing with Rofi 2.0.0: source build, install, plugin loading and
+  uninstall verified.
 - Local Wayland/Hyprland with Rofi 2.0.0: interactive manual testing.
 
-The Debian/Ubuntu commands below are generic Meson build instructions; they are
-not part of this repository's CI matrix.
+Debian stable and Ubuntu 24.04 ship Rofi 1.7.5 and are not supported. CI also
+runs the source-install and plugin-load lifecycle on Ubuntu 26.04 LTS and Debian
+testing.
+
+The Debian/Ubuntu commands below are source-build instructions, verified on
+Ubuntu 26.04 LTS and Debian testing. They are not a `.deb` package.
 
 ### Fedora / Nobara package
 
@@ -275,6 +291,9 @@ or `{query}`.
 
 Disable a provider by setting it to `false`. Disabled providers add no results
 and are not queried.
+
+See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the provider support matrix,
+dependencies, external-service behavior and current limitations.
 
 ## Keyboard shortcuts
 
@@ -497,6 +516,9 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   if the service, network or fetcher is unavailable.
 - Neither the RPM nor the PKGBUILD is published in official distribution
   repositories.
+- Debian stable and Ubuntu 24.04 are unsupported because they ship Rofi 1.7.5;
+  no `.deb` package is provided. Ubuntu 26.04 LTS and Debian testing are verified
+  through source installation.
 - Rofi plugin ABI compatibility is bounded by the Rofi version used to build the
   plugin. Rebuild after a Rofi major upgrade.
 - Provider subprocesses executed through the shared process helper cap stdout

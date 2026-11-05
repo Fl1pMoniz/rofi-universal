@@ -578,6 +578,43 @@ static void test_config(void) {
   g_remove(path);
   g_free(path);
 
+  char *empty_path = NULL;
+  int empty_fd =
+      g_file_open_tmp("rofi-universal-empty-XXXXXX.ini", &empty_path, &error);
+  g_assert_no_error(error);
+  g_assert_cmpint(empty_fd, >=, 0);
+  close(empty_fd);
+  g_assert_true(g_file_set_contents(empty_path, "", 0, &error));
+  g_assert_no_error(error);
+  u_config_init(&config);
+  g_assert_true(u_config_load(&config, empty_path));
+  g_assert_cmpint(config.max_results, ==, 40);
+  g_assert_true(config.applications);
+  u_config_clear(&config);
+  g_remove(empty_path);
+  g_free(empty_path);
+
+  char *invalid_path = NULL;
+  int invalid_fd =
+      g_file_open_tmp("rofi-universal-invalid-XXXXXX.ini", &invalid_path,
+                      &error);
+  g_assert_no_error(error);
+  g_assert_cmpint(invalid_fd, >=, 0);
+  close(invalid_fd);
+  const char *invalid_content =
+      "[general]\nmax_results=not-a-number\n"
+      "[providers]\napplications=maybe\n"
+      "[unknown]\nkey=value\n";
+  g_assert_true(g_file_set_contents(invalid_path, invalid_content, -1, &error));
+  g_assert_no_error(error);
+  u_config_init(&config);
+  g_assert_true(u_config_load(&config, invalid_path));
+  g_assert_cmpint(config.max_results, ==, 40);
+  g_assert_true(config.applications);
+  u_config_clear(&config);
+  g_remove(invalid_path);
+  g_free(invalid_path);
+
   u_config_init(&config);
   g_assert_false(u_config_load(&config, "/definitely/not/a/rofi-universal/config.ini"));
   g_assert_cmpint(config.max_results, ==, 40);

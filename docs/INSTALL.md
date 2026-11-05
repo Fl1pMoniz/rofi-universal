@@ -6,10 +6,15 @@
 - Fedora 44 with Rofi 2.0.0: CI compile and Xvfb plugin load.
 - Arch Linux current with Rofi 2.0.0: CI package build, install, Xvfb plugin
   load, `namcap` and removal.
+- Ubuntu 26.04 LTS with Rofi 2.0.0: source build, install, plugin load and
+  uninstall verified.
+- Debian testing with Rofi 2.0.0: source build, install, plugin load and
+  uninstall verified.
 - Local Wayland/Hyprland with Rofi 2.0.0.
 
-The Debian/Ubuntu instructions are generic Meson build instructions and are not
-covered by this repository's CI matrix.
+Debian stable and Ubuntu 24.04 ship Rofi 1.7.5 and are not supported.
+
+See [PROVIDERS.md](PROVIDERS.md) for provider-specific dependencies and status.
 
 ## Distribution dependencies
 
@@ -33,13 +38,21 @@ sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalcu
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
 
-### Debian / Ubuntu
+### Ubuntu 26.04 LTS / Debian testing
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
   libglib2.0-dev libcairo2-dev libjson-glib-dev qalc
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
+
+Source build, install, plugin loading and uninstall were verified in Ubuntu
+26.04 LTS and Debian testing with Rofi 2.0.0. No `.deb` package is currently
+provided.
+
+Debian stable and Ubuntu 24.04 ship Rofi 1.7.5, below the required Rofi 1.7.6,
+and are not supported. CI also runs the source-install and plugin-load lifecycle
+on Ubuntu 26.04 LTS and Debian testing.
 
 ## Build and install
 
@@ -91,7 +104,8 @@ makepkg -si
 
 The RPM is built, installed and removed in Fedora 42/44 CI. The PKGBUILD is
 built, installed, plugin-loaded and removed in an Arch Linux container CI. Neither
-package is published in official repositories. See
+package is published in official repositories. No `.deb` package is provided;
+Ubuntu 26.04 LTS and Debian testing use the source installer. See
 [../packaging/README.md](../packaging/README.md) for release archive and checksum
 details.
 

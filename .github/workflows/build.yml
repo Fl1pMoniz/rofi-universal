@@ -166,3 +166,42 @@ jobs:
           test ! -e /usr/bin/rofi-universal
           test ! -e /usr/lib/rofi/libuniversal.so
           test -f /root/.config/rofi-universal/config.ini
+
+  debian-family:
+    name: ${{ matrix.container }} source install
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [ubuntu:26.04, debian:testing]
+    container: ${{ matrix.container }}
+    steps:
+      - name: Prepare container
+        run: apt-get update && apt-get install -y git ca-certificates
+      - uses: actions/checkout@v5
+      - name: Install build dependencies
+        run: >
+          apt-get install -y
+          build-essential meson ninja-build pkg-config libglib2.0-dev
+          libcairo2-dev libjson-glib-dev rofi rofi-dev xvfb xauth python3
+      - name: Configure, build and test
+        run: |
+          meson setup build-deb --buildtype=release -Dwerror=true
+          meson compile -C build-deb
+          meson test -C build-deb --print-errorlogs
+      - name: Source install and plugin load
+        run: |
+          rm -rf /tmp/ru-config
+          mkdir -p /tmp/ru-config/rofi-universal
+          printf '[general]\nmax_results=17\n' > /tmp/ru-config/rofi-universal/config.ini
+          PREFIX=/usr BUILDDIR=build-deb XDG_CONFIG_HOME=/tmp/ru-config ./scripts/install.sh
+          test -f /usr/lib/x86_64-linux-gnu/rofi/libuniversal.so
+          test -f /usr/bin/rofi-universal
+          grep -q 'max_results=17' /tmp/ru-config/rofi-universal/config.ini
+          xvfb-run -a env ROFI_UNIVERSAL_BUILD=/usr/lib/x86_64-linux-gnu/rofi python3 tests/test_integration.py
+      - name: Uninstall preserves configuration
+        run: |
+          PREFIX=/usr ./scripts/uninstall.sh
+          test ! -e /usr/lib/x86_64-linux-gnu/rofi/libuniversal.so
+          test ! -e /usr/bin/rofi-universal
+          grep -q 'max_results=17' /tmp/ru-config/rofi-universal/config.ini

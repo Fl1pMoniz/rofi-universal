@@ -67,7 +67,8 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
   quick local query-analysis/matching/formatting/dedup sanity check; benchmarks
   are not CI gates. Methodology and limitations are in `docs/BENCHMARKS.md`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
-  opening a pull request.
+  opening a pull request. CI also runs source-install/plugin-load checks on
+  Ubuntu 26.04 LTS and Debian testing.
 - Keep documentation and `data/config.example.ini` in sync with configuration
   changes.
 - Follow the existing C style: 2-space indentation, GLib memory helpers, no

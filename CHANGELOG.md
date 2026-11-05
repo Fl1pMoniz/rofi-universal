@@ -3,6 +3,37 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.9.0] - 2026-11-05
+
+### Added
+
+- Source build, install, Rofi plugin loading and uninstall verified on Ubuntu
+  26.04 LTS and Debian testing with Rofi 2.0.0.
+- CI source-install jobs for Ubuntu 26.04 LTS and Debian testing.
+- Provider support matrix in `docs/PROVIDERS.md` covering dependencies, network
+  behavior, result actions, fallbacks and limitations.
+- Configuration compatibility tests for empty files, invalid value types and
+  unknown keys.
+
+### Changed
+
+- README and installation documentation now state the tested Debian/Ubuntu
+  versions and explicitly mark Debian stable and Ubuntu 24.04 as unsupported
+  because they ship Rofi 1.7.5, below the required 1.7.6.
+- No `.deb` package is provided; Debian-family installation uses the verified
+  source installer.
+
+### Investigated / retained
+
+- Debian stable and Ubuntu 24.04 were not claimed as supported because their
+  Rofi version does not meet the plugin requirement.
+- Full Debian packaging was not added; maintaining a `.deb` without an
+  established package archive would add complexity without improving the
+  verified source path.
+- FileManager1 success remains mock-tested rather than tested against every
+  desktop file manager.
+- GitHub inline API results and web previews remain deferred.
+
 ## [0.8.0] - 2026-11-05
 
 ### Added
