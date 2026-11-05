@@ -1,5 +1,5 @@
 Name:           rofi-universal
-Version:        0.6.0
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
@@ -57,6 +57,10 @@ tools, and does not require a background daemon or an AI service.
 %{_datadir}/rofi-universal/config.example.ini
 
 %changelog
+* Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.7.0-1
+- Update to rofi-universal 0.7.0.
+- Add file reveal action and bounded clipboard decoding.
+
 * Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 0.6.0-1
 - Update to rofi-universal 0.6.0.
 - Add URL normalization, clearer result labels and benchmark target.
