@@ -1,3 +1,5 @@
+#include "dictionary.h"
+#include "fetch.h"
 #include "process.h"
 #include "universal.h"
 #include "weather.h"
@@ -63,6 +65,11 @@ typedef struct {
   guint weather_pending_generation;
   char *weather_failed_city;
   gint64 weather_failed_at;
+  UDictionaryCache dictionary_cache;
+  char *dictionary_pending_word;
+  guint dictionary_pending_generation;
+  char *dictionary_failed_word;
+  gint64 dictionary_failed_at;
 } UMode;
 
 typedef struct {
@@ -88,6 +95,12 @@ typedef struct {
   guint generation;
   char *city;
 } WeatherJob;
+
+typedef struct {
+  UMode *mode;
+  guint generation;
+  char *word;
+} DictionaryJob;
 
 static gboolean update_query(UMode *mode, const char *input);
 static void rebuild_local_results(UMode *mode);
@@ -524,49 +537,229 @@ static void add_web(UMode *mode, const char *query, const char *folded_query) {
   g_free(text);
 }
 
-static void add_dictionary(UMode *mode, const char *query,
-                           const char *folded_query) {
-  if (!mode->config.dictionary) {
+static gboolean dictionary_retry_active(gint64 failed_at, gint64 now) {
+  return failed_at > 0 && now >= failed_at &&
+         now - failed_at < 30 * G_USEC_PER_SEC;
+}
+
+static char *truncate_utf8_chars(const char *text, glong max_chars) {
+  if (!text) {
+    return g_strdup("");
+  }
+  if (g_utf8_strlen(text, -1) <= max_chars) {
+    return g_strdup(text);
+  }
+  const char *end = g_utf8_offset_to_pointer(text, max_chars);
+  char *prefix = g_strndup(text, end - text);
+  char *result = g_strconcat(prefix, "…", NULL);
+  g_free(prefix);
+  return result;
+}
+
+static void add_dictionary_entries(UMode *mode, const char *word,
+                                   GPtrArray *entries, gboolean async) {
+  if (!entries || entries->len == 0) {
     return;
   }
-  const char *word = NULL;
-  if (g_str_has_prefix(folded_query, "define ")) {
-    word = query + 7;
-  } else if (g_str_has_prefix(folded_query, "definition ")) {
-    word = query + 11;
-  } else if (g_str_has_prefix(folded_query, "dict ")) {
-    word = query + 5;
+  char *external = u_dictionary_external_url(word);
+  for (guint i = 0; i < entries->len; i++) {
+    UDictionaryEntry *entry = g_ptr_array_index(entries, i);
+    const char *display_word =
+        entry->word && *entry->word ? entry->word : word;
+    char *title =
+        i == 0 ? g_strdup(display_word)
+               : g_strdup_printf("%s · %d", display_word, (int)i + 1);
+    GString *description =
+        g_string_new("Dictionary · full definition");
+    if (entry->part_of_speech && *entry->part_of_speech) {
+      g_string_append(description, " · ");
+      g_string_append(description, entry->part_of_speech);
+    }
+    if (entry->phonetic && *entry->phonetic) {
+      g_string_append(description, " /");
+      g_string_append(description, entry->phonetic);
+      g_string_append(description, "/");
+    }
+    if (entry->definition && *entry->definition) {
+      g_string_append(description, " · ");
+      g_string_append(description, entry->definition);
+    }
+    if (entry->example && *entry->example) {
+      g_string_append(description, " — “");
+      g_string_append(description, entry->example);
+      g_string_append(description, "”");
+    }
+    char *description_text = truncate_utf8_chars(description->str, 220);
+    g_string_free(description, TRUE);
+    char *copy_text = g_strdup_printf("%s — %s", display_word,
+                                      entry->definition ? entry->definition
+                                                        : "");
+    UResult *result = u_result_new(
+        U_PROVIDER_DICTIONARY, title, description_text,
+        "accessories-dictionary", i == 0 ? 800 : 760, U_ACTION_OPEN_URI,
+        external, copy_text);
+    if (i == 0) {
+      u_result_set_dedup_key(result, external);
+    } else {
+      char *key = g_strdup_printf("%s#%d", external, (int)i + 1);
+      u_result_set_dedup_key(result, key);
+      g_free(key);
+    }
+    if (async) {
+      add_async_result(mode, result);
+    } else {
+      add_result(mode, result);
+    }
+    g_free(copy_text);
+    g_free(description_text);
+    g_free(title);
   }
-  if (word) {
-    while (*word == ' ') {
-      word++;
+  g_free(external);
+}
+
+static void dictionary_finished(const char *stdout_text,
+                                const char *stderr_text, int exit_status,
+                                gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
+  DictionaryJob *job = data;
+  UMode *mode = job->mode;
+  GPtrArray *entries =
+      mode && success && stdout_text
+          ? u_dictionary_parse_response(stdout_text, job->word)
+          : NULL;
+  if (mode) {
+    gboolean current = mode->query_generation == job->generation;
+    if (entries) {
+      if (current) {
+        g_clear_pointer(&mode->dictionary_pending_word, g_free);
+        mode->dictionary_pending_generation = 0;
+        g_clear_pointer(&mode->dictionary_failed_word, g_free);
+        mode->dictionary_failed_at = 0;
+        add_dictionary_entries(mode, job->word, entries, TRUE);
+        merge_results(mode);
+        schedule_reload(mode);
+      }
+      u_dictionary_cache_put(&mode->dictionary_cache, job->word, entries,
+                             g_get_monotonic_time());
+    } else if (current &&
+               g_strcmp0(mode->dictionary_pending_word, job->word) == 0) {
+      g_clear_pointer(&mode->dictionary_pending_word, g_free);
+      mode->dictionary_pending_generation = 0;
+      g_free(mode->dictionary_failed_word);
+      mode->dictionary_failed_word = g_strdup(job->word);
+      mode->dictionary_failed_at = g_get_monotonic_time();
     }
   }
-  if (!word || !*word) {
+  remove_job(mode, job);
+  g_free(job->word);
+  g_free(job);
+}
+
+static void start_dictionary(UMode *mode, const char *word) {
+  if (!mode->config.dictionary || !word || !*word) {
     return;
   }
-  char *encoded = u_url_encode(word);
-  char *title = g_strdup_printf("Define “%s”", word);
-  char *dictionary_url = g_strdup_printf(
-      "https://www.dictionary.com/browse/%s", encoded);
-  char *wiktionary_url = g_strdup_printf(
-      "https://en.wiktionary.org/w/index.php?search=%s", encoded);
-  add_result(mode, u_result_new(U_PROVIDER_DICTIONARY, title,
-                                "Dictionary · Dictionary.com",
-                                "accessories-dictionary", 500,
-                                U_ACTION_OPEN_URI, dictionary_url,
-                                dictionary_url));
-  char *wiktionary_title = g_strdup_printf("Define “%s” on Wiktionary", word);
+  if (g_strcmp0(mode->dictionary_pending_word, word) == 0 &&
+      mode->dictionary_pending_generation == mode->query_generation) {
+    return;
+  }
+  gint64 now = g_get_monotonic_time();
+  if (g_strcmp0(mode->dictionary_failed_word, word) == 0 &&
+      dictionary_retry_active(mode->dictionary_failed_at, now)) {
+    return;
+  }
+  char *fetcher_path = NULL;
+  UFetcher fetcher = u_fetch_find(&fetcher_path);
+  if (fetcher == U_FETCH_NONE) {
+    g_free(fetcher_path);
+    return;
+  }
+  char *url = u_dictionary_api_url(word);
+  char **argv = u_fetch_build_argv(fetcher, fetcher_path, url,
+                                   mode->config.dictionary_timeout_seconds);
+  if (!argv) {
+    g_free(url);
+    g_free(fetcher_path);
+    return;
+  }
+  DictionaryJob *job = g_new0(DictionaryJob, 1);
+  job->mode = mode;
+  job->generation = mode->query_generation;
+  job->word = g_strdup(word);
+  g_free(mode->dictionary_pending_word);
+  mode->dictionary_pending_word = g_strdup(word);
+  mode->dictionary_pending_generation = mode->query_generation;
+  g_ptr_array_add(mode->jobs, job);
+  u_process_run((const char *const *)argv, mode->query_cancellable,
+                dictionary_finished, job);
+  g_strfreev(argv);
+  g_free(url);
+  g_free(fetcher_path);
+}
+
+static void add_dictionary(UMode *mode, const char *query,
+                           const char *folded_query) {
+  if (!mode->config.dictionary || mode->analysis.dictionary_score < 600) {
+    return;
+  }
+  char *word = u_dictionary_word_from_query(query, folded_query);
+  if (!word || !*word) {
+    g_free(word);
+    return;
+  }
+  char *dictionary_url = u_dictionary_external_url(word);
+  char *wiktionary_url = u_wiktionary_url(word);
+  char *title = g_strdup_printf("Open definition for %s", word);
+  UResult *fallback = u_result_new(
+      U_PROVIDER_DICTIONARY, title, "Dictionary · Dictionary.com",
+      "accessories-dictionary", 450, U_ACTION_OPEN_URI, dictionary_url,
+      dictionary_url);
+  u_result_set_dedup_key(fallback, dictionary_url);
+  add_result(mode, fallback);
+  char *wiktionary_title = g_strdup_printf("Look up “%s” on Wiktionary", word);
   add_result(mode, u_result_new(U_PROVIDER_DICTIONARY, wiktionary_title,
                                 "Dictionary · Wiktionary",
-                                "accessories-dictionary", 450,
+                                "accessories-dictionary", 430,
                                 U_ACTION_OPEN_URI, wiktionary_url,
                                 wiktionary_url));
+  gboolean fresh = FALSE;
+  GPtrArray *entries = u_dictionary_cache_get(
+      &mode->dictionary_cache, word, g_get_monotonic_time(), &fresh);
+  if (entries && fresh) {
+    add_dictionary_entries(mode, word, entries, FALSE);
+  } else {
+    start_dictionary(mode, word);
+  }
   g_free(wiktionary_title);
   g_free(title);
   g_free(dictionary_url);
   g_free(wiktionary_url);
-  g_free(encoded);
+  g_free(word);
+}
+
+static void add_github_category(UMode *mode, const char *search,
+                                UGitHubCategory category, int score) {
+  const char *type = "repositories";
+  const char *label = "repositories";
+  const char *icon = "applications-internet";
+  if (category == U_GITHUB_USERS) {
+    type = "users";
+    label = "users";
+    icon = "system-users";
+  } else if (category == U_GITHUB_ISSUES) {
+    type = "issues";
+    label = "issues";
+    icon = "dialog-information";
+  }
+  char *url = u_github_search_url(search, type);
+  char *title = g_strdup_printf("Search GitHub %s for %s", label, search);
+  char *description = g_strdup_printf("GitHub · %s", label);
+  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title, description, icon,
+                                score, U_ACTION_OPEN_URI, url, url));
+  g_free(description);
+  g_free(title);
+  g_free(url);
 }
 
 static void add_github(UMode *mode, const char *query,
@@ -583,10 +776,9 @@ static void add_github(UMode *mode, const char *query,
   if (!term || !*term) {
     return;
   }
-  char *search = g_strdup(term);
-  g_strstrip(search);
-  if (!*search) {
-    g_free(search);
+  UGitHubCategory category = U_GITHUB_REPOS;
+  char *search = u_github_strip_category(term, &category);
+  if (!search) {
     return;
   }
 
@@ -599,29 +791,24 @@ static void add_github(UMode *mode, const char *query,
     g_free(title);
   }
 
-  char *url = u_github_search_url(search, "repositories");
-  char *title = g_strdup_printf("Search GitHub repositories for %s", search);
-  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title,
-                                "GitHub · repositories", "applications-internet",
-                                550, U_ACTION_OPEN_URI, url, url));
-  g_free(title);
-  g_free(url);
-
-  url = u_github_search_url(search, "users");
-  title = g_strdup_printf("Search GitHub users for %s", search);
-  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title, "GitHub · users",
-                                "system-users", 450, U_ACTION_OPEN_URI, url,
-                                url));
-  g_free(title);
-  g_free(url);
-
-  url = u_github_search_url(search, "issues");
-  title = g_strdup_printf("Search GitHub issues for %s", search);
-  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title, "GitHub · issues",
-                                "dialog-information", 400, U_ACTION_OPEN_URI,
-                                url, url));
-  g_free(title);
-  g_free(url);
+  UGitHubCategory order[3];
+  if (category == U_GITHUB_ISSUES) {
+    order[0] = U_GITHUB_ISSUES;
+    order[1] = U_GITHUB_REPOS;
+    order[2] = U_GITHUB_USERS;
+  } else if (category == U_GITHUB_USERS) {
+    order[0] = U_GITHUB_USERS;
+    order[1] = U_GITHUB_REPOS;
+    order[2] = U_GITHUB_ISSUES;
+  } else {
+    order[0] = U_GITHUB_REPOS;
+    order[1] = U_GITHUB_USERS;
+    order[2] = U_GITHUB_ISSUES;
+  }
+  const int scores[3] = {650, 500, 450};
+  for (int i = 0; i < 3; i++) {
+    add_github_category(mode, search, order[i], scores[i]);
+  }
   g_free(repo_url);
   g_free(search);
 }
@@ -683,13 +870,13 @@ static void start_weather(UMode *mode, const char *city) {
     return;
   }
   char *fetcher_path = NULL;
-  UWeatherFetcher fetcher = u_weather_find_fetcher(&fetcher_path);
-  if (fetcher == U_WEATHER_FETCH_NONE) {
+  UFetcher fetcher = u_fetch_find(&fetcher_path);
+  if (fetcher == U_FETCH_NONE) {
     g_free(fetcher_path);
     return;
   }
   char *url = u_weather_summary_url(city);
-  char **argv = u_weather_build_argv(
+  char **argv = u_fetch_build_argv(
       fetcher, fetcher_path, url, mode->config.weather_timeout_seconds);
   if (!argv) {
     g_free(url);
@@ -1322,6 +1509,8 @@ static int universal_init(Mode *sw) {
       g_ptr_array_new_with_free_func(clipboard_entry_free);
   u_weather_cache_init(&mode->weather_cache,
                        mode->config.weather_cache_seconds, 64);
+  u_dictionary_cache_init(&mode->dictionary_cache,
+                          mode->config.dictionary_cache_seconds, 32);
   mode->jobs = g_ptr_array_new();
   mode->life_cancellable = g_cancellable_new();
   mode->query_cancellable = g_cancellable_new();
@@ -1363,8 +1552,11 @@ static void universal_destroy(Mode *sw) {
   g_ptr_array_free(mode->bookmarks, TRUE);
   g_ptr_array_free(mode->clipboard_entries, TRUE);
   u_weather_cache_clear(&mode->weather_cache);
+  u_dictionary_cache_clear(&mode->dictionary_cache);
   g_free(mode->weather_pending_city);
   g_free(mode->weather_failed_city);
+  g_free(mode->dictionary_pending_word);
+  g_free(mode->dictionary_failed_word);
   g_free(mode->query);
   u_config_clear(&mode->config);
   g_free(mode);

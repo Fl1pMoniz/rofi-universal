@@ -28,7 +28,16 @@ void u_result_free(gpointer data) {
   g_free(result->icon);
   g_free(result->copy_text);
   g_free(result->payload);
+  g_free(result->dedup_key);
   g_free(result);
+}
+
+void u_result_set_dedup_key(UResult *result, const char *key) {
+  if (!result) {
+    return;
+  }
+  g_free(result->dedup_key);
+  result->dedup_key = g_strdup(key);
 }
 
 void u_results_dedup(GPtrArray *results) {
@@ -40,12 +49,14 @@ void u_results_dedup(GPtrArray *results) {
   GPtrArray *unique = g_ptr_array_new();
   for (guint i = 0; i < results->len; i++) {
     UResult *result = g_ptr_array_index(results, i);
-    if (!result->payload || !*result->payload) {
+    const char *identity = result->dedup_key && *result->dedup_key
+                               ? result->dedup_key
+                               : result->payload;
+    if (!identity || !*identity) {
       g_ptr_array_add(unique, result);
       continue;
     }
-    char *key = g_strdup_printf("%d:%s", (int)result->provider,
-                                result->payload);
+    char *key = g_strdup_printf("%d:%s", (int)result->provider, identity);
     gpointer found = g_hash_table_lookup(seen, key);
     if (found) {
       guint index = GPOINTER_TO_UINT(found) - 1;
@@ -211,6 +222,52 @@ char *u_github_search_url(const char *query, const char *type) {
   return url;
 }
 
+char *u_github_strip_category(const char *term, UGitHubCategory *category) {
+  if (category) {
+    *category = U_GITHUB_REPOS;
+  }
+  if (!term) {
+    return NULL;
+  }
+  char *text = g_strdup(term);
+  g_strstrip(text);
+  char *folded = g_utf8_casefold(text, -1);
+  if (g_str_has_prefix(folded, "issues ")) {
+    if (category) {
+      *category = U_GITHUB_ISSUES;
+    }
+    memmove(text, text + 7, strlen(text + 7) + 1);
+  } else if (g_str_has_prefix(folded, "issue ")) {
+    if (category) {
+      *category = U_GITHUB_ISSUES;
+    }
+    memmove(text, text + 6, strlen(text + 6) + 1);
+  } else if (g_str_has_prefix(folded, "users ")) {
+    if (category) {
+      *category = U_GITHUB_USERS;
+    }
+    memmove(text, text + 6, strlen(text + 6) + 1);
+  } else if (g_str_has_prefix(folded, "user ")) {
+    if (category) {
+      *category = U_GITHUB_USERS;
+    }
+    memmove(text, text + 5, strlen(text + 5) + 1);
+  } else if (g_str_has_prefix(folded, "repositories ")) {
+    memmove(text, text + 13, strlen(text + 13) + 1);
+  } else if (g_str_has_prefix(folded, "repos ")) {
+    memmove(text, text + 6, strlen(text + 6) + 1);
+  } else if (g_str_has_prefix(folded, "repo ")) {
+    memmove(text, text + 5, strlen(text + 5) + 1);
+  }
+  g_free(folded);
+  g_strstrip(text);
+  if (!*text) {
+    g_free(text);
+    return NULL;
+  }
+  return text;
+}
+
 char *u_github_repo_url(const char *term) {
   if (!term || !*term ||
       !g_regex_match_simple("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", term, 0,
@@ -283,6 +340,8 @@ void u_config_init(UConfig *config) {
   config->weather_cache_seconds = 600;
   config->weather_timeout_seconds = 4;
   config->dictionary = TRUE;
+  config->dictionary_cache_seconds = 86400;
+  config->dictionary_timeout_seconds = 4;
   config->github = TRUE;
   config->weather = TRUE;
   config->bookmarks = TRUE;
@@ -338,6 +397,14 @@ gboolean u_config_load(UConfig *config, const char *path) {
       CLAMP(config->weather_timeout_seconds, 1, 15);
   config->dictionary =
       key_bool(file, "providers", "dictionary", config->dictionary);
+  config->dictionary_cache_seconds = key_int(
+      file, "dictionary", "cache_seconds", config->dictionary_cache_seconds);
+  config->dictionary_cache_seconds =
+      CLAMP(config->dictionary_cache_seconds, 60, 604800);
+  config->dictionary_timeout_seconds = key_int(
+      file, "dictionary", "timeout_seconds", config->dictionary_timeout_seconds);
+  config->dictionary_timeout_seconds =
+      CLAMP(config->dictionary_timeout_seconds, 1, 15);
   config->github = key_bool(file, "providers", "github", config->github);
   config->weather = key_bool(file, "providers", "weather", config->weather);
   config->bookmarks =

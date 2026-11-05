@@ -38,8 +38,18 @@ with tempfile.TemporaryDirectory(prefix="rofi-universal-rapid-") as tmp:
     curl.write_text(
         "#!/bin/sh\n"
         f"printf 'start\\n' >> {shlex.quote(str(log))}\n"
-        "sleep 1.5\n"
-        "printf 'Testville: +20°C, wind 5km/h, humidity 50%%\\n'\n"
+        "case \"$*\" in\n"
+        "  *dictionaryapi.dev*)\n"
+        "    sleep 1.5\n"
+        "    printf '%s' '[{\"word\":\"ephemeral\",\"meanings\":"
+        "[{\"partOfSpeech\":\"adjective\",\"definitions\":"
+        "[{\"definition\":\"Lasting for a very short time.\"}]}]}]'\n"
+        "    ;;\n"
+        "  *)\n"
+        "    sleep 1.5\n"
+        "    printf 'Testville: +20°C, wind 5km/h, humidity 50%%\\n'\n"
+        "    ;;\n"
+        "esac\n"
     )
     curl.chmod(0o755)
 
@@ -47,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix="rofi-universal-rapid-") as tmp:
     config.write_text(
         "[providers]\n"
         "applications=false\ncalculator=false\nweb=false\nfiles=false\n"
-        "clipboard=false\ndictionary=false\ngithub=false\nweather=true\n"
+        "clipboard=false\ndictionary=true\ngithub=false\nweather=true\n"
         "bookmarks=false\n"
         "[weather]\ntimeout_seconds=1\n"
     )
@@ -76,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="rofi-universal-rapid-") as tmp:
 
         replace_query("weather in Lisbon")
         time.sleep(0.15)
-        replace_query("weather in Porto")
+        replace_query("define ephemeral")
         time.sleep(0.15)
         replace_query("weather in Faro")
         time.sleep(0.15)

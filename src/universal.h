@@ -26,6 +26,12 @@ typedef enum {
 } UAction;
 
 typedef enum {
+  U_GITHUB_REPOS,
+  U_GITHUB_USERS,
+  U_GITHUB_ISSUES
+} UGitHubCategory;
+
+typedef enum {
   U_INTENT_EMPTY,
   U_INTENT_APP,
   U_INTENT_CALC,
@@ -44,6 +50,7 @@ typedef struct {
   char *icon;
   char *copy_text;
   char *payload;
+  char *dedup_key;
   UAction action;
   UProvider provider;
   int score;
@@ -76,6 +83,8 @@ typedef struct {
   int weather_cache_seconds;
   int weather_timeout_seconds;
   gboolean dictionary;
+  int dictionary_cache_seconds;
+  int dictionary_timeout_seconds;
   gboolean github;
   gboolean weather;
   gboolean bookmarks;
@@ -94,6 +103,7 @@ UResult *u_result_new(UProvider provider, const char *title,
                       UAction action, const char *payload,
                       const char *copy_text);
 void u_result_free(gpointer data);
+void u_result_set_dedup_key(UResult *result, const char *key);
 void u_results_dedup(GPtrArray *results);
 int u_result_compare(gconstpointer a, gconstpointer b);
 const char *u_provider_name(UProvider provider);
@@ -112,6 +122,8 @@ int u_app_match_score(const char *name, const char *executable,
                       const char *query);
 int u_file_match_score(const char *path, const char *query);
 gboolean u_query_has_glob(const char *query);
+char *u_dictionary_word_from_query(const char *query,
+                                   const char *folded_query);
 gboolean u_query_is_url(const char *query);
 gboolean u_query_is_path(const char *query);
 gboolean u_query_looks_calculable(const char *query);
@@ -121,6 +133,7 @@ char *u_search_url(const char *engine, const char *query);
 const char *u_web_engine_template(const char *engine);
 char *u_github_search_url(const char *query, const char *type);
 char *u_github_repo_url(const char *term);
+char *u_github_strip_category(const char *term, UGitHubCategory *category);
 
 void u_config_init(UConfig *config);
 gboolean u_config_load(UConfig *config, const char *path);

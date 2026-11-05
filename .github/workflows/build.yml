@@ -18,8 +18,8 @@ jobs:
       - name: Install build dependencies
         run: >
           dnf install -y
-          gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
-          python3 xorg-x11-server-Xvfb xorg-x11-xauth xdotool
+          gcc glib2-devel cairo-devel json-glib-devel meson ninja-build pkg-config
+          rofi-devel python3 xorg-x11-server-Xvfb xorg-x11-xauth xdotool
       - name: Configure
         run: meson setup build --buildtype=release -Dwerror=true
       - name: Build
@@ -53,8 +53,8 @@ jobs:
       - name: Install quality dependencies
         run: >
           dnf install -y
-          gcc clang glib2-devel cairo-devel meson ninja-build pkg-config
-          rofi-devel libasan libubsan
+          gcc clang glib2-devel cairo-devel json-glib-devel meson ninja-build
+          pkg-config rofi-devel libasan libubsan
       - name: Clang build and tests
         run: |
           CC=clang meson setup build-clang --buildtype=release -Dwerror=true
@@ -86,8 +86,9 @@ jobs:
       - name: Install packaging dependencies
         run: >
           dnf install -y
-          gcc glib2-devel cairo-devel meson ninja-build pkg-config rofi-devel
-          rpm-build rpmdevtools python3 xorg-x11-server-Xvfb xorg-x11-xauth
+          gcc glib2-devel cairo-devel json-glib-devel meson ninja-build pkg-config
+          rofi-devel rpm-build rpmdevtools python3 xorg-x11-server-Xvfb
+          xorg-x11-xauth
       - name: Build RPM and verify source checksum
         run: |
           cd "$GITHUB_WORKSPACE"
@@ -127,7 +128,7 @@ jobs:
       - name: Install packaging dependencies
         run: >
           pacman -S --noconfirm --needed
-          base-devel meson ninja rofi namcap xorg-server-xvfb python
+          base-devel meson ninja rofi json-glib namcap xorg-server-xvfb python
       - name: Build package and validate checksum
         run: |
           useradd -m builder

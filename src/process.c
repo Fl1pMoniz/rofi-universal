@@ -2,57 +2,195 @@
 
 #include <string.h>
 
+#define READ_CHUNK 8192
+
 typedef struct {
   GSubprocess *process;
   GCancellable *cancellable;
+  GCancellable *read_cancellable;
   gulong cancel_handler;
   UProcessDoneFunc done;
   gpointer user_data;
+  GString *stdout_text;
+  GString *stderr_text;
+  gsize max_output;
+  guint timeout_source;
+  gboolean truncated;
   gboolean cancelled;
+  gboolean timed_out;
+  gboolean read_error;
+  gboolean wait_ok;
+  gboolean stdout_done;
+  gboolean stderr_done;
+  gboolean wait_done;
+  gboolean finished;
+  int exit_status;
 } UProcessContext;
+
+typedef struct {
+  UProcessContext *context;
+  GInputStream *stream;
+  gboolean is_stdout;
+  guint8 *buffer;
+} UProcessRead;
+
+static void process_finish(UProcessContext *context);
 
 static void process_cancelled(GCancellable *cancellable, gpointer data) {
   (void)cancellable;
   UProcessContext *context = data;
   context->cancelled = TRUE;
+  if (context->read_cancellable) {
+    g_cancellable_cancel(context->read_cancellable);
+  }
   if (context->process) {
     g_subprocess_force_exit(context->process);
   }
 }
 
-static void process_finished(GObject *source, GAsyncResult *result,
-                             gpointer data) {
+static gboolean process_timed_out(gpointer data) {
+  UProcessContext *context = data;
+  context->timeout_source = 0;
+  context->timed_out = TRUE;
+  if (context->read_cancellable) {
+    g_cancellable_cancel(context->read_cancellable);
+  }
+  if (context->process) {
+    g_subprocess_force_exit(context->process);
+  }
+  return G_SOURCE_REMOVE;
+}
+
+static void process_wait_done(GObject *source, GAsyncResult *result,
+                              gpointer data) {
   UProcessContext *context = data;
   GSubprocess *process = G_SUBPROCESS(source);
-  char *stdout_text = NULL;
-  char *stderr_text = NULL;
   GError *error = NULL;
-  gboolean success = g_subprocess_communicate_utf8_finish(
-      process, result, &stdout_text, &stderr_text, &error);
-  if (error) {
-    if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+  if (!g_subprocess_wait_finish(process, result, &error)) {
+    if (error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
       context->cancelled = TRUE;
     }
-    g_error_free(error);
+    g_clear_error(&error);
+  } else {
+    context->wait_ok = TRUE;
+    if (g_subprocess_get_if_exited(process)) {
+      context->exit_status = g_subprocess_get_exit_status(process);
+    } else if (g_subprocess_get_if_signaled(process)) {
+      context->exit_status = 128 + g_subprocess_get_term_sig(process);
+    } else {
+      context->exit_status = -1;
+    }
   }
-  if (context->cancelled) {
-    success = FALSE;
+  context->wait_done = TRUE;
+  process_finish(context);
+}
+
+static void process_read_more(UProcessRead *read);
+
+static void process_read_done(GObject *source, GAsyncResult *result,
+                              gpointer data) {
+  UProcessRead *read = data;
+  UProcessContext *context = read->context;
+  GError *error = NULL;
+  gssize count =
+      g_input_stream_read_finish(G_INPUT_STREAM(source), result, &error);
+  if (count > 0) {
+    GString *target =
+        read->is_stdout ? context->stdout_text : context->stderr_text;
+    gsize remaining =
+        context->max_output > target->len ? context->max_output - target->len
+                                          : 0;
+    gsize copy = MIN((gsize)count, remaining);
+    if (copy > 0) {
+      g_string_append_len(target, (const char *)read->buffer, copy);
+    }
+    g_clear_error(&error);
+    if ((gsize)count > remaining) {
+      context->truncated = TRUE;
+      if (context->read_cancellable) {
+        g_cancellable_cancel(context->read_cancellable);
+      }
+      if (context->process) {
+        g_subprocess_force_exit(context->process);
+      }
+      if (read->is_stdout) {
+        context->stdout_done = TRUE;
+      } else {
+        context->stderr_done = TRUE;
+      }
+      g_free(read->buffer);
+      g_free(read);
+      process_finish(context);
+      return;
+    }
+    process_read_more(read);
+    return;
   }
-  int exit_status = -1;
-  if (!context->cancelled && g_subprocess_get_if_exited(process)) {
-    exit_status = g_subprocess_get_exit_status(process);
-  } else if (!context->cancelled && g_subprocess_get_if_signaled(process)) {
-    exit_status = 128 + g_subprocess_get_term_sig(process);
+  if (count < 0) {
+    if (!(error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED))) {
+      context->read_error = TRUE;
+    } else if (!context->cancelled && !context->timed_out &&
+               !context->truncated) {
+      context->read_error = TRUE;
+    }
+    if (context->read_cancellable) {
+      g_cancellable_cancel(context->read_cancellable);
+    }
+    if (context->process) {
+      g_subprocess_force_exit(context->process);
+    }
+    g_clear_error(&error);
   }
-  if (!context->cancelled && success && exit_status != 0) {
-    success = FALSE;
+  if (read->is_stdout) {
+    context->stdout_done = TRUE;
+  } else {
+    context->stderr_done = TRUE;
+  }
+  g_free(read->buffer);
+  g_free(read);
+  process_finish(context);
+}
+
+static void process_read_more(UProcessRead *read) {
+  g_input_stream_read_async(read->stream, read->buffer, READ_CHUNK,
+                            G_PRIORITY_DEFAULT,
+                            read->context->read_cancellable, process_read_done,
+                            read);
+}
+
+static void process_finish(UProcessContext *context) {
+  if (context->finished || !context->stdout_done || !context->stderr_done ||
+      !context->wait_done) {
+    return;
+  }
+  context->finished = TRUE;
+  if (context->timeout_source) {
+    g_source_remove(context->timeout_source);
+    context->timeout_source = 0;
   }
   if (context->cancel_handler && context->cancellable) {
     g_cancellable_disconnect(context->cancellable, context->cancel_handler);
     context->cancel_handler = 0;
   }
+  gboolean success = context->wait_ok && !context->cancelled &&
+                     !context->timed_out && !context->truncated &&
+                     !context->read_error && context->exit_status == 0;
+  char *stdout_text = g_string_free(context->stdout_text, FALSE);
+  char *stderr_text = g_string_free(context->stderr_text, FALSE);
+  if (stdout_text && !g_utf8_validate(stdout_text, -1, NULL)) {
+    char *valid = g_utf8_make_valid(stdout_text, -1);
+    g_free(stdout_text);
+    stdout_text = valid;
+    success = FALSE;
+  }
+  if (stderr_text && !g_utf8_validate(stderr_text, -1, NULL)) {
+    char *valid = g_utf8_make_valid(stderr_text, -1);
+    g_free(stderr_text);
+    stderr_text = valid;
+    success = FALSE;
+  }
   if (context->done) {
-    context->done(stdout_text, stderr_text, exit_status, success,
+    context->done(stdout_text, stderr_text, context->exit_status, success,
                   context->user_data);
   }
   g_free(stdout_text);
@@ -60,12 +198,36 @@ static void process_finished(GObject *source, GAsyncResult *result,
   if (context->cancellable) {
     g_object_unref(context->cancellable);
   }
+  if (context->read_cancellable) {
+    g_object_unref(context->read_cancellable);
+  }
   g_clear_object(&context->process);
   g_free(context);
 }
 
-void u_process_run(const char *const *argv, GCancellable *cancellable,
-                   UProcessDoneFunc done, gpointer user_data) {
+static void process_start_read(UProcessContext *context, gboolean is_stdout) {
+  UProcessRead *read = g_new0(UProcessRead, 1);
+  read->context = context;
+  read->stream = is_stdout ? g_subprocess_get_stdout_pipe(context->process)
+                           : g_subprocess_get_stderr_pipe(context->process);
+  read->is_stdout = is_stdout;
+  if (!read->stream) {
+    if (is_stdout) {
+      context->stdout_done = TRUE;
+    } else {
+      context->stderr_done = TRUE;
+    }
+    g_free(read);
+    process_finish(context);
+    return;
+  }
+  read->buffer = g_malloc(READ_CHUNK);
+  process_read_more(read);
+}
+
+void u_process_run_limited(const char *const *argv, GCancellable *cancellable,
+                           gsize max_output_bytes, guint timeout_ms,
+                           UProcessDoneFunc done, gpointer user_data) {
   if (!argv || !argv[0]) {
     if (done) {
       done(NULL, NULL, -1, FALSE, user_data);
@@ -89,12 +251,29 @@ void u_process_run(const char *const *argv, GCancellable *cancellable,
   context->process = process;
   context->done = done;
   context->user_data = user_data;
+  context->max_output =
+      max_output_bytes > 0 ? max_output_bytes : U_PROCESS_DEFAULT_MAX_OUTPUT;
+  context->exit_status = -1;
+  context->stdout_text = g_string_new(NULL);
+  context->stderr_text = g_string_new(NULL);
+  context->read_cancellable = g_cancellable_new();
   if (cancellable) {
     context->cancellable = g_object_ref(cancellable);
     context->cancel_handler =
         g_cancellable_connect(cancellable, G_CALLBACK(process_cancelled),
                               context, NULL);
   }
-  g_subprocess_communicate_utf8_async(process, NULL, cancellable,
-                                      process_finished, context);
+  if (timeout_ms > 0) {
+    context->timeout_source =
+        g_timeout_add(timeout_ms, process_timed_out, context);
+  }
+  process_start_read(context, TRUE);
+  process_start_read(context, FALSE);
+  g_subprocess_wait_async(process, cancellable, process_wait_done, context);
+}
+
+void u_process_run(const char *const *argv, GCancellable *cancellable,
+                   UProcessDoneFunc done, gpointer user_data) {
+  u_process_run_limited(argv, cancellable, U_PROCESS_DEFAULT_MAX_OUTPUT, 0,
+                        done, user_data);
 }

@@ -100,6 +100,82 @@ gboolean u_query_has_glob(const char *query) {
   return query && strpbrk(query, "*?[") != NULL;
 }
 
+static char *dictionary_substring(const char *start, size_t length) {
+  char *word = g_strndup(start, length);
+  g_strstrip(word);
+  if (!*word) {
+    g_free(word);
+    return NULL;
+  }
+  return word;
+}
+
+char *u_dictionary_word_from_query(const char *query,
+                                   const char *folded_query) {
+  if (!query || !folded_query) {
+    return NULL;
+  }
+  char *text = g_strdup(query);
+  char *folded = g_strdup(folded_query);
+  g_strstrip(text);
+  g_strstrip(folded);
+  size_t query_length = strlen(text);
+  size_t folded_length = strlen(folded);
+  const char *start = NULL;
+  size_t length = 0;
+  if (g_str_has_prefix(folded, "definition of ")) {
+    start = text + 14;
+    length = query_length - 14;
+  } else if (g_str_has_prefix(folded, "define ")) {
+    start = text + 7;
+    length = query_length - 7;
+  } else if (g_str_has_prefix(folded, "definition ")) {
+    start = text + 11;
+    length = query_length - 11;
+  } else if (g_str_has_prefix(folded, "dict ")) {
+    start = text + 5;
+    length = query_length - 5;
+  } else if (g_str_has_prefix(folded, "meaning of ")) {
+    start = text + 11;
+    length = query_length - 11;
+  } else if (folded_length > 15 &&
+             g_str_has_prefix(folded, "what does ") &&
+             g_str_has_suffix(folded, " mean")) {
+    start = text + 10;
+    length = query_length - 10 - 5;
+  } else if (folded_length > 8 && g_str_has_suffix(folded, " meaning")) {
+    start = text;
+    length = query_length - 8;
+  } else if (folded_length > 11 && g_str_has_suffix(folded, " definition")) {
+    start = text;
+    length = query_length - 11;
+  }
+  g_free(folded);
+  if (!start || length == 0) {
+    g_free(text);
+    return NULL;
+  }
+  char *word = dictionary_substring(start, length);
+  g_free(text);
+  if (!word || !g_utf8_validate(word, -1, NULL) ||
+      strpbrk(word, "/\\*?[]{}") != NULL) {
+    g_free(word);
+    return NULL;
+  }
+  gboolean has_letter = FALSE;
+  for (const char *p = word; *p; p = g_utf8_next_char(p)) {
+    if (g_unichar_isalpha(g_utf8_get_char(p))) {
+      has_letter = TRUE;
+      break;
+    }
+  }
+  if (!has_letter) {
+    g_free(word);
+    return NULL;
+  }
+  return word;
+}
+
 int u_intent_boost(UIntent intent, UProvider provider) {
   UQueryAnalysis analysis;
   memset(&analysis, 0, sizeof(analysis));
@@ -315,9 +391,9 @@ void u_analyze_query(const char *query, UQueryAnalysis *analysis) {
     analysis->explicit_provider = U_PROVIDER_WEATHER;
     goto done;
   }
-  if (g_str_has_prefix(folded, "define ") ||
-      g_str_has_prefix(folded, "definition ") ||
-      g_str_has_prefix(folded, "dict ")) {
+  char *dictionary_word = u_dictionary_word_from_query(text, folded);
+  if (dictionary_word) {
+    g_free(dictionary_word);
     analysis->dictionary_score = 1100;
     analysis->web_score = 150;
     analysis->intent = U_INTENT_DICTIONARY;

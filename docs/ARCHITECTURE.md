@@ -7,8 +7,10 @@ database, indexing service or dynamic provider framework.
 src/
   plugin.c       Rofi mode callbacks, provider implementations and actions
   query.c        Query analysis, provider relevance and scoring signals
-  process.c      Cancellable async subprocess capture
+  process.c      Cancellable async, output-limited subprocess capture
+  fetch.c        curl/wget selection and command construction
   weather.c      Weather location, URL and response parsing
+  dictionary.c   Dictionary URL, JSON parsing and bounded cache
   universal.c    Result model, URL building and INI configuration
   universal.h    Shared interfaces
 ```
@@ -40,18 +42,26 @@ discounted and executable-prefix matches are weighted below name-prefix matches,
 so `steam games` ranks Steam itself above catalogue entries. File results use
 `u_file_match_score()` to rank filename hits above parent-path hits.
 
-`u_results_dedup()` collapses results with the same provider and payload, keeping
-the higher score. Inline weather and the external forecast action share a URL, so
-the inline summary replaces the fallback when present.
+`u_results_dedup()` collapses results with the same provider and identity, keeping
+the higher score. It uses an optional `dedup_key` when present, otherwise the
+payload. Inline weather and the external forecast action share a URL, so the
+inline summary replaces the fallback when present. Inline dictionary definitions
+use per-sense dedup keys so multiple definitions remain visible while the
+redundant Dictionary.com fallback is replaced.
 
 `u_score_signals()` and `u_provider_relevance()` are testable in `test_core.c`.
 Sorting is deterministic: score, provider, then title.
 
 ## Async lifecycle
 
-`src/process.c` wraps `GSubprocess` with a cancellable callback that captures
-stdout/stderr and reports a success flag, exit status and a cancellation flag.
-Cancellation force-exits the child process.
+`src/process.c` wraps `GSubprocess` with cancellable asynchronous stdout/stderr
+reads and reports a success flag, exit status and a cancellation flag. Output is
+streamed into bounded strings: stdout and stderr each default to 4 MiB per
+process. Exceeding a limit cancels the reads, force-exits the child, marks the
+operation failed and delivers only the bounded partial output. An optional
+timeout is available through the limited API and is covered by tests. Cancellation
+and timeout both stop reads promptly even when a grandchild process still holds a
+pipe open.
 
 The plugin keeps:
 
@@ -73,21 +83,27 @@ Failed cities back off briefly, and stale-generation results may be cached but
 are never inserted into the current result list. If curl/wget or the network is
 unavailable, the external wttr.in action remains.
 
-`src/weather.c` also owns the cache, retry-backoff, fetcher-selection and
-weather-command construction helpers. These are tested without network access.
-The process helper reports non-zero exits as failures, so failed curl/wget
-requests never become weather results. Subprocess stdout/stderr are still fully
-buffered by `GSubprocess`; a streaming output cap is deferred because it requires
-a larger process-lifecycle change.
+`src/weather.c` owns the bounded cache and response parsing. `src/fetch.c` owns
+curl/wget selection and command construction. These are tested without network
+access. The process helper reports non-zero exits as failures, so failed curl/wget
+requests never become weather results.
+
+Inline dictionary uses the same fetch and process helpers. `src/dictionary.c`
+parses dictionaryapi.dev JSON with JSON-GLib, extracts up to two definitions,
+and maintains a bounded in-memory cache with oldest-entry eviction. The plugin
+uses a query generation and pending-word generation, like weather, so obsolete
+dictionary requests cannot overwrite newer results. Failed words back off briefly.
+The browser fallback is always available.
 
 On plugin destruction, all jobs have their mode pointer cleared, cancellables are
 cancelled, and result/cache arrays are released. Late callbacks free their job
 without touching the destroyed mode.
 
 `tests/test_rapid_queries.py` exercises this path under Xvfb. It uses a fake
-weather fetcher, sends several rapid queries with `xdotool`, closes Rofi while a
-request is pending, and checks for clean teardown and the absence of crash
-markers. It is a lifecycle smoke test rather than a row-level assertion.
+fetcher for both weather and dictionary requests, sends several rapid queries
+with `xdotool`, closes Rofi while work is pending, and checks for clean teardown
+and the absence of crash markers. It is a lifecycle smoke test rather than a
+row-level assertion.
 
 ## Result ownership
 

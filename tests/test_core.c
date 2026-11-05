@@ -275,6 +275,28 @@ static void test_urls(void) {
   g_free(url);
   g_assert_null(u_github_repo_url("rofi plugins"));
   g_assert_null(u_github_repo_url("a/b/c"));
+
+  UGitHubCategory category = U_GITHUB_REPOS;
+  char *term = u_github_strip_category("issues rofi", &category);
+  g_assert_cmpint(category, ==, U_GITHUB_ISSUES);
+  g_assert_cmpstr(term, ==, "rofi");
+  g_free(term);
+  term = u_github_strip_category("users torvalds", &category);
+  g_assert_cmpint(category, ==, U_GITHUB_USERS);
+  g_assert_cmpstr(term, ==, "torvalds");
+  g_free(term);
+  term = u_github_strip_category("repos rofi plugins", &category);
+  g_assert_cmpint(category, ==, U_GITHUB_REPOS);
+  g_assert_cmpstr(term, ==, "rofi plugins");
+  g_free(term);
+  term = u_github_strip_category("rofi plugins", &category);
+  g_assert_cmpint(category, ==, U_GITHUB_REPOS);
+  g_assert_cmpstr(term, ==, "rofi plugins");
+  g_free(term);
+  term = u_github_strip_category("issues", &category);
+  g_assert_cmpint(category, ==, U_GITHUB_REPOS);
+  g_assert_cmpstr(term, ==, "issues");
+  g_free(term);
 }
 
 static void test_ranking(void) {
@@ -335,6 +357,82 @@ static void test_dedup(void) {
   u_result_free(hint_b);
 }
 
+static void test_dictionary_query(void) {
+  char *word =
+      u_dictionary_word_from_query("define ephemeral", "define ephemeral");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  word = u_dictionary_word_from_query("definition of ephemeral",
+                                      "definition of ephemeral");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  word = u_dictionary_word_from_query("ephemeral meaning", "ephemeral meaning");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  word = u_dictionary_word_from_query("what does ephemeral mean",
+                                      "what does ephemeral mean");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  word = u_dictionary_word_from_query("meaning of ephemeral",
+                                      "meaning of ephemeral");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  word = u_dictionary_word_from_query("ephemeral definition",
+                                      "ephemeral definition");
+  g_assert_cmpstr(word, ==, "ephemeral");
+  g_free(word);
+  g_assert_null(u_dictionary_word_from_query("define", "define"));
+  g_assert_null(u_dictionary_word_from_query("meaning", "meaning"));
+  g_assert_null(u_dictionary_word_from_query("what does mean", "what does mean"));
+  g_assert_null(u_dictionary_word_from_query("define /tmp/file", "define /tmp/file"));
+  g_assert_null(u_dictionary_word_from_query("define 123", "define 123"));
+  g_assert_null(u_dictionary_word_from_query("ephemeral", "ephemeral"));
+
+  UQueryAnalysis analysis;
+  u_analyze_query("ephemeral meaning", &analysis);
+  g_assert_cmpint(analysis.dictionary_score, >=, 600);
+  g_assert_cmpint(analysis.explicit_provider, ==, U_PROVIDER_DICTIONARY);
+  u_analyze_query("what does ephemeral mean", &analysis);
+  g_assert_cmpint(analysis.dictionary_score, >=, 600);
+  u_analyze_query("ephemeral", &analysis);
+  g_assert_cmpint(analysis.dictionary_score, <, 600);
+}
+
+static void test_dedup_key(void) {
+  UResult *one = u_result_new(U_PROVIDER_DICTIONARY, "one", "d", "i", 100,
+                              U_ACTION_OPEN_URI, "https://example/1", "one");
+  UResult *two = u_result_new(U_PROVIDER_DICTIONARY, "two", "d", "i", 200,
+                              U_ACTION_OPEN_URI, "https://example/1", "two");
+  UResult *low = u_result_new(U_PROVIDER_DICTIONARY, "low", "d", "i", 50,
+                              U_ACTION_OPEN_URI, "https://example/2", "low");
+  UResult *high = u_result_new(U_PROVIDER_DICTIONARY, "high", "d", "i", 150,
+                               U_ACTION_OPEN_URI, "https://example/3", "high");
+  u_result_set_dedup_key(one, "one");
+  u_result_set_dedup_key(two, "two");
+  u_result_set_dedup_key(low, "same");
+  u_result_set_dedup_key(high, "same");
+  GPtrArray *results = g_ptr_array_new();
+  g_ptr_array_add(results, one);
+  g_ptr_array_add(results, two);
+  g_ptr_array_add(results, low);
+  g_ptr_array_add(results, high);
+  u_results_dedup(results);
+  g_assert_cmpuint(results->len, ==, 3);
+  gboolean saw_high = FALSE;
+  for (guint i = 0; i < results->len; i++) {
+    UResult *result = g_ptr_array_index(results, i);
+    if (g_strcmp0(result->title, "high") == 0) {
+      saw_high = TRUE;
+    }
+  }
+  g_assert_true(saw_high);
+  g_ptr_array_free(results, TRUE);
+  u_result_free(one);
+  u_result_free(two);
+  u_result_free(low);
+  u_result_free(high);
+}
+
 static void test_config(void) {
   UConfig config;
   u_config_init(&config);
@@ -346,6 +444,8 @@ static void test_config(void) {
   g_assert_cmpstr(config.weather_location, ==, "");
   g_assert_cmpint(config.weather_cache_seconds, ==, 600);
   g_assert_cmpint(config.weather_timeout_seconds, ==, 4);
+  g_assert_cmpint(config.dictionary_cache_seconds, ==, 86400);
+  g_assert_cmpint(config.dictionary_timeout_seconds, ==, 4);
   u_config_clear(&config);
 
   char *path = NULL;
@@ -359,7 +459,8 @@ static void test_config(void) {
       "[providers]\ncalculator=false\nclipboard=false\n"
       "[files]\nmax_depth=2\nroots=/tmp\n"
       "[clipboard]\nautomatic=true\ncache_seconds=5\nmax_results=3\n"
-      "[weather]\nlocation=Porto\ncache_seconds=120\ntimeout_seconds=2\n";
+      "[weather]\nlocation=Porto\ncache_seconds=120\ntimeout_seconds=2\n"
+      "[dictionary]\ncache_seconds=3600\ntimeout_seconds=3\n";
   g_assert_true(g_file_set_contents(path, content, -1, &error));
   g_assert_no_error(error);
   u_config_init(&config);
@@ -377,6 +478,8 @@ static void test_config(void) {
   g_assert_cmpstr(config.weather_location, ==, "Porto");
   g_assert_cmpint(config.weather_cache_seconds, ==, 120);
   g_assert_cmpint(config.weather_timeout_seconds, ==, 2);
+  g_assert_cmpint(config.dictionary_cache_seconds, ==, 3600);
+  g_assert_cmpint(config.dictionary_timeout_seconds, ==, 3);
   u_config_clear(&config);
 
   content = "[weather]\ncache_seconds=1\ntimeout_seconds=99\n";
@@ -407,6 +510,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/urls", test_urls);
   g_test_add_func("/core/ranking", test_ranking);
   g_test_add_func("/core/dedup", test_dedup);
+  g_test_add_func("/core/dedup-key", test_dedup_key);
+  g_test_add_func("/core/dictionary-query", test_dictionary_query);
   g_test_add_func("/core/config", test_config);
   return g_test_run();
 }

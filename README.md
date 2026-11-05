@@ -33,9 +33,14 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 - **Clipboard history** through `cliphist`, with explicit `clip ` search and
   optional low-priority automatic matching. The history is cached in memory and
   never written to disk by the launcher.
-- **Dictionary** shortcuts for `define <word>`.
+- **Inline dictionary** for `define <word>`, `definition of <word>`,
+  `<word> meaning` and `what does <word> mean`. Definitions, part of speech,
+  phonetics and examples are shown directly in Rofi when the public
+  dictionaryapi.dev service is reachable; browser links remain as fallback.
 - **GitHub** search for `github <query>` or `gh <query>`, with repository, user
-  and issue actions plus direct `owner/repository` opening.
+  and issue actions plus direct `owner/repository` opening. Category-led
+  queries such as `github issues rofi` and `github users torvalds` put the
+  requested category first.
 - **Weather** for `weather in <city>`: an inline summary when `curl` or `wget`
   can reach wttr.in, plus an external detailed-forecast fallback. Results are
   cached in memory. A bare `weather` query uses `[weather] location` if set and
@@ -44,9 +49,10 @@ type, and you do not need to switch modes or remember a prefix for normal use.
   when `jq` and `sqlite3` are available, loaded in the background.
 - **Keyboard-first**: `Enter` runs the selected result; `Shift+Enter` copies its
   URL, path, value or title to the clipboard.
-- **Non-blocking lifecycle**: file searches, clipboard refresh, bookmark loading
-  and `qalc` run asynchronously. New queries cancel obsolete work and stale
-  callbacks are rejected by generation checks.
+- **Non-blocking lifecycle**: file searches, clipboard refresh, bookmark loading,
+  inline weather, inline dictionary and `qalc` run asynchronously. New queries
+  cancel obsolete work and stale callbacks are rejected by generation checks.
+  Subprocess output is bounded per stream.
 
 ## Screenshot
 
@@ -57,8 +63,8 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 ![Animated demo: applications, calculator, currency, units, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
 
 The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
-interaction and result presentation; v0.3 added inline weather and v0.4 improves
-ranking, file matching and search result categories.
+interaction and result presentation; v0.3 added inline weather, v0.4 improved
+ranking and search categories, and v0.5 adds inline dictionary definitions.
 
 ## Requirements
 
@@ -67,7 +73,7 @@ ranking, file matching and search result categories.
 - Rofi **1.7.6+** with plugin support. CI compiles and loads the plugin with
   Rofi **1.7.9** (Fedora 42) and Rofi **2.0.0** (Fedora 44 and Arch Linux).
   Interactive Wayland testing uses Rofi **2.0.0**.
-- GLib/GIO development headers, a C compiler, Meson and Ninja
+- GLib/GIO and JSON-GLib development headers, a C compiler, Meson and Ninja
 - `qalc` from [Qalculate!](https://qalculate.github.io/) for calculations,
   units and currency conversion
 
@@ -79,6 +85,7 @@ ranking, file matching and search result categories.
 | Clipboard | `cliphist`, `wl-clipboard` (Wayland) or `xclip`/`xsel` (X11) |
 | Bookmarks | `jq` for Chromium-family, `sqlite3` for Firefox/Zen |
 | Inline weather | `curl` or `wget`; network access to wttr.in |
+| Inline dictionary | `curl` or `wget`; network access to dictionaryapi.dev |
 | URL/file opening | `xdg-open` or the desktop's default URL handler |
 | Web search | a browser registered as the default URL handler |
 
@@ -88,7 +95,7 @@ ranking, file matching and search result categories.
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel qalculate
+  glib2-devel cairo-devel json-glib-devel qalculate
 # Optional:
 sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ```
@@ -96,7 +103,7 @@ sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ### Arch Linux
 
 ```sh
-sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo qalculate
+sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalculate
 # Optional:
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
@@ -105,7 +112,7 @@ sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
-  libglib2.0-dev libcairo2-dev qalc
+  libglib2.0-dev libcairo2-dev libjson-glib-dev qalc
 # Optional:
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
@@ -241,6 +248,10 @@ automatic=false
 cache_seconds=30
 max_results=10
 
+[dictionary]
+cache_seconds=86400
+timeout_seconds=4
+
 [weather]
 location=
 cache_seconds=600
@@ -283,8 +294,11 @@ and are not queried.
 | `steam games` | Steam itself above its catalogue entries, with web search below |
 | `zen` / `kitty` | Application match, with files below |
 | `~/Downloads/report.pdf` | Direct file or directory open |
-| `define ephemeral` | Dictionary links |
+| `define ephemeral` | Inline definition with external reference fallback |
+| `definition of ephemeral` | Inline definition, natural-language form |
+| `what does ephemeral mean` | Inline definition, natural-language form |
 | `github hyprwhispr` | GitHub repository, user and issue search |
+| `github issues rofi` | GitHub issue search first |
 | `github owner/repository` | Direct repository opening plus search actions |
 | `weather in Tokyo` | Inline weather when available, plus an external forecast action |
 | `hyprland configuration` | Web search |
@@ -305,14 +319,18 @@ Source layout:
 src/
   plugin.c       Rofi callbacks, providers, actions and result merging
   query.c        Query analysis, provider relevance and scoring signals
-  process.c      Cancellable asynchronous subprocess capture
+  process.c      Cancellable asynchronous, output-limited subprocess capture
+  fetch.c        curl/wget selection and command construction
   weather.c      Weather location, URL and response parsing
+  dictionary.c   Dictionary URL, JSON parsing and cache helpers
   universal.c    Result model, URL building and configuration
   universal.h    Shared interfaces
 tests/
   test_core.c    Query, ranking, URL and configuration tests
-  test_process.c Async process success, cancellation and failure tests
+  test_process.c Async process, output-limit, timeout and failure tests
   test_weather.c Weather location, URL and response parsing tests
+  test_fetch.c   HTTP fetcher selection and command tests
+  test_dictionary.c Dictionary URL, JSON parsing and cache tests
   test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
 ```
 
@@ -334,15 +352,20 @@ combines match quality, provider relevance and a local-action bonus:
 
 Async work uses a query-generation counter and a per-query `GCancellable`.
 Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh,
-bookmark loading and inline weather retrieval run through `src/process.c`; obsolete
-processes are cancelled and callbacks for older generations are ignored. Bookmark,
-clipboard and weather data are held only in memory for the plugin's lifetime.
+bookmark loading, inline weather and inline dictionary retrieval run through
+`src/process.c`; obsolete processes are cancelled and callbacks for older
+generations are ignored. Bookmark, clipboard, weather and dictionary data are held
+only in memory for the plugin's lifetime. Subprocess stdout/stderr are capped at
+4 MiB per stream; exceeding the cap marks the operation failed and terminates the
+child.
 
 No prompt is sent to an AI model. No daemon runs in the background. Network access
 only happens when `qalc` refreshes exchange rates, when a weather query requests an
-inline summary, or when the user chooses a web action. Bookmark stores are read
-locally. Inline weather requires `curl` or `wget` and sends the requested city to
-wttr.in; if retrieval fails, the external forecast action still works.
+inline summary, when a dictionary query requests a definition, or when the user
+chooses a web action. Bookmark stores are read locally. Inline weather requires
+`curl` or `wget` and sends the requested city to wttr.in. Inline dictionary
+requires `curl` or `wget` and sends only the requested word to dictionaryapi.dev.
+Browser fallbacks remain when either service or a fetcher is unavailable.
 
 ## Extending
 
@@ -371,11 +394,14 @@ meson test -C build --print-errorlogs
 
 The core tests check query analysis, application/file match helpers, URL
 encoding, GitHub/web URL construction, provider relevance, ranking, deduplication,
-configuration and invalid input. The weather tests use fixtures and do not require
-network access. The process tests check asynchronous success, cancellation and
-spawn failures. The rapid-query smoke test requires Xvfb and `xdotool`; it starts
-Rofi with a fake weather fetcher and closes the launcher while requests are
-pending. An interactive smoke test can be run on Wayland:
+dictionary query forms, configuration and invalid input. The weather and dictionary
+tests use fixtures and do not require network access. The fetch tests check
+curl/wget selection and command construction. The process tests cover success,
+output limits, partial reads, large stderr, timeout, continuous output,
+invalid UTF-8, cancellation, failures and spawn errors. The rapid-query smoke
+test requires Xvfb and `xdotool`; it starts Rofi with a fake fetcher, exercises
+weather and dictionary requests, and closes the launcher while work is pending.
+An interactive smoke test can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -413,6 +439,11 @@ forecast action remains available if inline retrieval fails. Set
 `[weather] location` to use a default city for a bare `weather` query; otherwise
 use `weather in <city>`.
 
+**Dictionary definitions are not inline**
+Install `curl` or `wget` and allow network access to `dictionaryapi.dev`.
+Dictionary browser actions remain available when the service or a fetcher is
+unavailable. Cache duration and timeout are configurable under `[dictionary]`.
+
 **Bookmarks are missing**
 Only Chromium-family JSON bookmarks and Firefox/Zen SQLite bookmarks are read.
 Install `jq` and/or `sqlite3`.
@@ -425,17 +456,20 @@ does not ship a theme and preserves the look of your existing Rofi setup.
 
 - Inline weather depends on the public wttr.in service and an optional `curl` or
   `wget` binary. It degrades to an external forecast link when unavailable.
-- Web search and dictionary results open browser actions; they do not scrape
-  search-engine pages, display live previews or show inline dictionary
-  definitions.
+- Web search opens browser actions; it does not scrape search-engine pages or
+  display live previews. GitHub inline API results are deferred because
+  unauthenticated search rate limits make typing-driven requests unreliable.
+- Inline dictionary depends on dictionaryapi.dev. It falls back to browser links
+  if the service, network or fetcher is unavailable.
 - Neither the RPM nor the PKGBUILD is published in official distribution
   repositories.
 - Rofi plugin ABI compatibility is bounded by the Rofi version used to build the
   plugin. Rebuild after a Rofi major upgrade.
-- Subprocess output is buffered in memory by the existing process helper. The
-  clipboard result cache is bounded, but extremely large output from an optional
-  external tool is not incrementally capped. A streaming output cap remains
-  deferred.
+- Provider subprocesses executed through the shared process helper cap stdout
+  and stderr at 4 MiB per stream. Output above the cap is treated as a failed
+  operation, not silently parsed. The clipboard-decode action still uses a
+  separate synchronous clipboard helper and can briefly buffer a large selected
+  clipboard item.
 
 ## License
 

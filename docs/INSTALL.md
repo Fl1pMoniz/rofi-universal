@@ -17,7 +17,7 @@ covered by this repository's CI matrix.
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel qalculate
+  glib2-devel cairo-devel json-glib-devel qalculate
 ```
 
 Optional providers:
@@ -29,7 +29,7 @@ sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ### Arch Linux
 
 ```sh
-sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo qalculate
+sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalculate
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
 
@@ -37,7 +37,7 @@ sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
-  libglib2.0-dev libcairo2-dev qalc
+  libglib2.0-dev libcairo2-dev libjson-glib-dev qalc
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
 

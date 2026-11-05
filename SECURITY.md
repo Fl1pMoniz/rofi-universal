@@ -33,14 +33,19 @@ Include:
   configuration file as trusted local input. Asynchronous subprocesses are
   cancellable, non-zero exits are treated as failures, and callbacks are ignored
   when their query generation is stale or the plugin has been destroyed.
-  Subprocess stdout is buffered in memory; queries and expected provider output
-  are small, but extremely large output from an optional external tool is not
-  incrementally capped.
+  Provider subprocesses executed through the shared asynchronous helper cap
+  stdout and stderr at 4 MiB each. Output beyond the cap causes the operation to
+  fail and the child to be terminated; truncated output is not treated as a
+  successful provider result. The clipboard decode/copy helpers are separate
+  synchronous operations run only after an explicit user action.
 - **Network access** is limited to qalc exchange-rate updates, optional inline
-  weather retrieval, and opening web actions chosen by the user. Inline weather
-  sends the requested city to wttr.in through `curl` or `wget`; it is not used
-  for queries without a weather signal. Weather summaries are cached only in
-  memory. The launcher does not send queries to an AI service.
+  weather retrieval, optional inline dictionary retrieval, and opening web
+  actions chosen by the user. Inline weather sends the requested city to
+  wttr.in through `curl` or `wget`; inline dictionary sends only the requested
+  word to dictionaryapi.dev. Neither is used without the corresponding query
+  signal. Weather and dictionary results are cached only in memory. Remote JSON
+  is validated and parsed defensively before display. The launcher does not send
+  queries to an AI service.
 - **Desktop files and bookmarks** are local data. A malicious desktop entry can
   still launch a malicious command when selected; the launcher does not execute
   desktop entries without a user action.

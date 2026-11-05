@@ -97,6 +97,14 @@ never written to a persistent cache by the launcher.
 ## GitHub and web shortcuts
 
 `github <query>` or `gh <query>` shows repository, user and issue search actions.
+Category-led forms put the requested category first:
+
+```text
+github issues rofi
+github users torvalds
+github repos rofi plugins
+```
+
 A query in `owner/repository` form also offers direct repository opening:
 `github Fl1pMoniz/rofi-universal`.
 
@@ -104,6 +112,37 @@ Web bangs include `!arch` (Arch Wiki), `!man` (Arch man pages), `!docs`
 (DevDocs) and `!pkg` (Arch packages), in addition to the general search-engine
 and site-specific bangs listed above. These open browser actions; they do not
 scrape result pages.
+
+## Dictionary
+
+```ini
+[dictionary]
+cache_seconds=86400
+timeout_seconds=4
+```
+
+Dictionary queries are recognized in these forms:
+
+```text
+define ephemeral
+definition ephemeral
+definition of ephemeral
+ephemeral meaning
+ephemeral definition
+what does ephemeral mean
+meaning of ephemeral
+```
+
+When `curl` or `wget` is available, the plugin requests a compact definition
+from the public dictionaryapi.dev service and shows up to two definitions inline
+with part of speech, phonetics and examples where available. Selecting an inline
+result opens a detailed Dictionary.com reference; `Shift+Enter` copies the
+definition. Wiktionary and Dictionary.com browser actions remain as fallbacks.
+
+`cache_seconds` is clamped to 60–604800 seconds. `timeout_seconds` is clamped to
+1–15 seconds. Only the requested word is sent to dictionaryapi.dev; no local
+files, application lists or clipboard contents are sent. Results are cached in
+memory only.
 
 ## Weather
 
@@ -152,7 +191,13 @@ provider relevance, match quality and a small local-action preference.
 
 Results with the same provider and target are deduplicated, keeping the higher
 score. For example, an inline weather summary replaces the redundant external
-forecast action when both point to the same forecast URL.
+forecast action when both point to the same forecast URL. Inline dictionary
+results use per-sense deduplication keys so multiple definitions remain visible
+while the redundant Dictionary.com fallback is replaced.
+
+Subprocess stdout and stderr are each capped at 4 MiB. Exceeding the cap marks the
+operation as failed and terminates the child; truncated output is never parsed as
+a successful provider result.
 
 Local results render immediately. qalc, fd, clipboard refresh, bookmark loading
 and inline weather retrieval run asynchronously. A new query cancels obsolete

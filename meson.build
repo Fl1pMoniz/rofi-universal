@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.4.0',
+  version: '0.5.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -10,11 +10,14 @@ rofi = dependency('rofi', version: '>=1.7.6')
 glib = dependency('glib-2.0', version: '>=2.72')
 gio = dependency('gio-2.0')
 gio_unix = dependency('gio-unix-2.0')
-deps = [rofi, glib, gio, gio_unix, dependency('gmodule-2.0'), dependency('cairo')]
+json_glib = dependency('json-glib-1.0', version: '>=1.6')
+deps = [rofi, glib, gio, gio_unix, dependency('gmodule-2.0'),
+        dependency('cairo'), json_glib]
 
 shared_module(
   'universal',
-  ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c', 'src/weather.c'],
+  ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c',
+   'src/weather.c', 'src/fetch.c', 'src/dictionary.c'],
   dependencies: deps,
   install: true,
   install_dir: get_option('libdir') / 'rofi',
@@ -55,3 +58,19 @@ test_weather = executable(
   include_directories: include_directories('src'),
 )
 test('weather', test_weather)
+
+test_fetch = executable(
+  'test-fetch',
+  ['tests/test_fetch.c', 'src/fetch.c'],
+  dependencies: [glib],
+  include_directories: include_directories('src'),
+)
+test('fetch', test_fetch)
+
+test_dictionary = executable(
+  'test-dictionary',
+  ['tests/test_dictionary.c', 'src/dictionary.c'],
+  dependencies: [glib, json_glib],
+  include_directories: include_directories('src'),
+)
+test('dictionary', test_dictionary)

@@ -3,6 +3,50 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.5.0] - 2026-11-05
+
+### Added
+
+- Inline dictionary definitions from dictionaryapi.dev, including part of speech,
+  phonetic text, examples and up to two definitions. Natural forms such as
+  `definition of ephemeral`, `ephemeral meaning` and `what does ephemeral mean`
+  are recognized alongside `define ephemeral`.
+- Bounded dictionary cache with configurable TTL and timeout, stale-request
+  rejection, retry backoff and browser fallback.
+- Bounded subprocess output: stdout and stderr are streamed and capped at 4 MiB
+  each. Exceeding a limit terminates the process and marks the operation failed.
+- Optional timeout support in the process helper, with deterministic tests for
+  timeout, continuous output, partial reads, large stderr and invalid UTF-8.
+- GitHub category-led queries: `github issues rofi`, `github users torvalds` and
+  `github repos rofi plugins` put the requested category first.
+- Per-result deduplication keys so multiple dictionary senses remain visible
+  while the redundant external-reference fallback is collapsed.
+- Shared `src/fetch.c` curl/wget selection and command construction.
+- JSON-GLib dependency for defensive JSON parsing.
+
+### Changed
+
+- Inline dictionary results open the detailed Dictionary.com reference; the
+  Wiktionary and Dictionary.com browser actions remain fallbacks.
+- Process cancellation and timeout stop reads immediately instead of waiting for
+  grandchildren that still hold inherited pipes open.
+- GitHub search actions use more useful repository/user/issue labels and scores.
+
+### Fixed
+
+- Subprocess output is no longer unbounded in memory.
+- A timed-out or cancelled subprocess no longer waits for surviving child
+  processes to close inherited pipes.
+- Dictionary responses with malformed JSON, invalid UTF-8 or missing fields are
+  rejected safely.
+
+### Deferred
+
+- GitHub inline API results remain deferred because unauthenticated search rate
+  limits make typing-driven requests unreliable; browser actions remain.
+- Web-search result previews remain deferred because no reliable documented
+  source is available without scraping.
+
 ## [0.4.0] - 2026-11-05
 
 ### Added

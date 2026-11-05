@@ -9,7 +9,7 @@ Required tools:
 - Rofi 1.7.6+ with development headers (`rofi-devel`, `rofi-dev`, or the headers
   included in the distribution's Rofi package)
 - Meson, Ninja, a C11 compiler, pkg-config
-- GLib/GIO and Cairo development headers
+- GLib/GIO, JSON-GLib and Cairo development headers
 - `qalc` for calculator integration (optional for building, required for the
   calculator provider at runtime)
 
@@ -17,7 +17,7 @@ On Fedora/Nobara:
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel qalculate
+  glib2-devel cairo-devel json-glib-devel qalculate
 ```
 
 Build and test:
@@ -47,9 +47,11 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Local results must not block on network requests.
 - Missing optional dependencies must degrade gracefully.
 - Add or update tests in `tests/test_core.c` for query analysis, application/file
-  matching, ranking, deduplication, configuration or URL changes. Add process
-  tests in `tests/test_process.c` for async behavior, and weather
-  parsing/cache/backoff/fetcher tests in `tests/test_weather.c`.
+  matching, dictionary query forms, ranking, deduplication, configuration or URL
+  changes. Add process/output-limit tests in `tests/test_process.c`, weather
+  parsing/cache tests in `tests/test_weather.c`, fetcher tests in
+  `tests/test_fetch.c`, and dictionary JSON/cache tests in
+  `tests/test_dictionary.c`.
 - Run `tests/test_rapid_queries.py` under Xvfb when changing lifecycle, weather
   request handling or plugin teardown. It requires `xdotool`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
@@ -73,7 +75,12 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 6. Add a test and document the provider in `README.md`,
    `docs/CONFIGURATION.md`, and the example configuration.
 7. If results can collide with an existing provider action, use a stable payload
-   so `u_results_dedup()` can keep the higher-scoring result.
+   or `u_result_set_dedup_key()` so `u_results_dedup()` can keep the
+   higher-scoring result.
+8. Bound subprocess output with `u_process_run()` or
+   `u_process_run_limited()`; do not parse output from a failed/truncated process.
+9. Network providers must use the shared fetch/process helpers, cache bounded
+   results in memory, and reject stale query generations.
 
 ## Licensing
 

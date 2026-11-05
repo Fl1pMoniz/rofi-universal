@@ -14,12 +14,6 @@ typedef struct {
   guint capacity;
 } UWeatherCache;
 
-typedef enum {
-  U_WEATHER_FETCH_NONE,
-  U_WEATHER_FETCH_CURL,
-  U_WEATHER_FETCH_WGET,
-} UWeatherFetcher;
-
 char *u_weather_location_from_query(const char *query, const char *folded_query,
                                     const char *default_location);
 char *u_weather_forecast_url(const char *city);
@@ -35,9 +29,5 @@ void u_weather_cache_put(UWeatherCache *cache, const char *city,
                          const char *summary, gint64 now);
 gboolean u_weather_retry_backoff_active(gint64 failed_at, gint64 now,
                                         int retry_seconds);
-
-UWeatherFetcher u_weather_find_fetcher(char **path);
-char **u_weather_build_argv(UWeatherFetcher fetcher, const char *path,
-                            const char *url, int timeout_seconds);
 
 #endif
