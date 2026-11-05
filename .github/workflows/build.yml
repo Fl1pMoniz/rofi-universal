@@ -37,6 +37,8 @@ jobs:
         run: dbus-run-session -- xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_filemanager_dbus.py
       - name: Clipboard decode/copy test
         run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_clipboard_actions.py
+      - name: Calculator and currency integration test
+        run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_calculator_currency.py
       - name: Install and uninstall scripts
         run: |
           PREFIX=/tmp/ru-install XDG_CONFIG_HOME=/tmp/ru-config ./scripts/install.sh

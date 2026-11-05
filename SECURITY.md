@@ -40,19 +40,22 @@ Include:
   synchronous capture for explicit copy actions with a 5-second timeout; items
   above 4 MiB, binary data and invalid UTF-8 are refused. Clipboard contents are
   never logged or written to a persistent cache by the launcher.
-- **Network access** is limited to qalc exchange-rate updates, optional inline
-  weather retrieval, optional inline dictionary retrieval, and opening web
-  actions chosen by the user. Inline weather sends the requested city to
-  wttr.in through `curl` or `wget`; inline dictionary sends only the requested
-  word to dictionaryapi.dev. Neither is used without the corresponding query
-  signal. Weather and dictionary results are cached only in memory. Remote JSON
+- **Network access** is limited to optional currency-rate retrieval, optional
+  inline weather retrieval, optional inline dictionary retrieval, and opening web
+  actions chosen by the user. Currency retrieval sends only the base currency
+  code to api.frankfurter.dev through `curl` or `wget`; inline weather sends the
+  requested city to wttr.in; inline dictionary sends only the requested word to
+  dictionaryapi.dev. None is used without the corresponding query signal.
+  Currency, weather and dictionary results are cached only in memory. Remote JSON
   is validated and parsed defensively before display. The launcher does not send
   queries to an AI service.
 - **Desktop files and bookmarks** are local data. A malicious desktop entry can
   still launch a malicious command when selected; the launcher does not execute
   desktop entries without a user action.
-- **Calculation output** comes from qalc and is copied to the clipboard only when
-  the user selects the calculation result.
+- **Calculation input is evaluated locally** by the native calculator parser. It
+  never invokes a shell, external evaluator, Python, JavaScript or arbitrary
+  program. Calculator output is copied to the clipboard only when the user
+  selects the result. Invalid expressions and non-finite results are rejected.
 
 No credentials or secrets are collected by the project. Do not include secrets in
 bug reports, screenshots, logs or test fixtures.

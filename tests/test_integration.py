@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Optional integration smoke test for the built plugin and qalc."""
+"""Optional integration smoke test for the built plugin."""
 from pathlib import Path
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -13,15 +12,6 @@ plugin = build / "libuniversal.so"
 
 if not plugin.is_file():
     raise SystemExit(f"missing plugin: {plugin} (run meson compile -C build)")
-
-qalc = shutil.which("qalc")
-if qalc:
-    out = subprocess.check_output([qalc, "-t", "25 * 18"], text=True, timeout=15)
-    if "450" not in out:
-        raise SystemExit(f"qalc returned unexpected output: {out!r}")
-    print("qalc calculator check passed")
-else:
-    print("qalc not found; skipping calculator check")
 
 if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
     print("no graphical session; skipping Rofi plugin load check")

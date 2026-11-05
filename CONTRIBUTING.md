@@ -10,14 +10,14 @@ Required tools:
   included in the distribution's Rofi package)
 - Meson, Ninja, a C11 compiler, pkg-config
 - GLib/GIO, JSON-GLib and Cairo development headers
-- `qalc` for calculator integration (optional for building, required for the
-  calculator provider at runtime)
+- `curl` or `wget` only for optional network providers; the calculator is native
+  and has no external runtime dependency
 
 On Fedora/Nobara:
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel json-glib-devel qalculate
+  glib2-devel cairo-devel json-glib-devel
 ```
 
 Build and test:
@@ -43,14 +43,16 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 
 - Keep the launcher lightweight. Do not add a daemon, database or AI service for
   basic search classification.
+- Keep the native calculator self-contained and dependency-free; do not invoke a
+  shell or external evaluator for user expressions.
 - Prefer documented command-line tools over copied source code.
 - Local results must not block on network requests.
 - Missing optional dependencies must degrade gracefully.
 - Add or update tests in `tests/test_core.c` for query analysis, application/file
   matching, dictionary query forms, ranking, deduplication, configuration or URL
-  changes. Add presentation/display-text tests in `tests/test_core.c`. Add
-  file URI/parent tests in `tests/test_core.c`, process/output-limit and bounded
-  synchronous clipboard-capture tests in `tests/test_process.c`, weather
+  changes. Add native calculator tests in `tests/test_calculator.c`, currency
+  parser/JSON/cache tests in `tests/test_currency.c`, process/output-limit and
+  bounded synchronous clipboard-capture tests in `tests/test_process.c`, weather
   parsing/cache tests in `tests/test_weather.c`, fetcher tests in
   `tests/test_fetch.c`, and dictionary JSON/cache tests in
   `tests/test_dictionary.c`.
@@ -63,6 +65,9 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
   PyGObject.
 - Run `tests/test_clipboard_actions.py` under Xvfb when changing clipboard
   decode/copy behavior. It uses fake cliphist/wl-copy tools.
+- Run `tests/test_calculator_currency.py` under Xvfb when changing calculator or
+  currency behavior. It uses fake curl/clipboard helpers and never depends on
+  an external calculator, a live exchange-rate service or the real clipboard.
 - Use `meson compile -C build benchmark-core && ./build/benchmark-core` for a
   quick local query-analysis/matching/formatting/dedup sanity check; benchmarks
   are not CI gates. Methodology and limitations are in `docs/BENCHMARKS.md`.

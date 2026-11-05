@@ -323,39 +323,9 @@ static int calc_relevance(const char *text) {
       matches("[0-9]\\s*%", text)) {
     return 900;
   }
-  if (matches("[0-9].*\\b(to|in)\\b.*\\b(hex|hexadecimal|binary|bin|"
-              "octal|oct|decimal|dec)\\b", text)) {
-    return 800;
-  }
   if (matches("\\b(pi|e)\\b\\s*[+*/^-]", text) ||
-      matches("[+*/^-]\\s*\\b(pi|e)\\b", text) ||
-      matches("\\b(now|today|tomorrow|yesterday)\\b\\s*[+-]", text)) {
+      matches("[+*/^-]\\s*\\b(pi|e)\\b", text)) {
     return 750;
-  }
-  gboolean currency =
-      matches("\\b(usd|eur|gbp|jpy|cad|aud|chf|cny|inr|brl|rub|krw|sek|nok|"
-              "dkk|pln|try|nzd|zar|mxn|sgd|hkd|btc|eth)\\b", text);
-  gboolean connector =
-      matches("(\\b(to|in|into)\\b|->|→)", text);
-  gboolean unit_after_number =
-      matches("[0-9]\\s*(km|kilometers?|kilometres?|mi|miles?|m|meters?|"
-              "metres?|cm|centimeters?|centimetres?|mm|millimeters?|"
-              "millimetres?|inch(?:es)?|ft|feet|kg|kilograms?|lbs?|pounds?|"
-              "oz|ounces?|g|grams?|mg|bytes?|kb|mb|gb|tb|kib|mib|gib|tib|"
-              "celsius|fahrenheit|kelvin|hours?|minutes?|seconds?|days?|"
-              "weeks?|months?|years?|liters?|litres?|gallons?|mph|kmh|kph)\\b",
-              text);
-  if (currency && connector) {
-    return 900;
-  }
-  if (unit_after_number && connector) {
-    return 900;
-  }
-  if (currency) {
-    return 450;
-  }
-  if (unit_after_number) {
-    return 600;
   }
   return 0;
 }

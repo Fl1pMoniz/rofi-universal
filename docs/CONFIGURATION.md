@@ -15,13 +15,11 @@ overwritten.
 ```ini
 [general]
 max_results=40
-qalc_binary=qalc
 web_engine=duckduckgo
 open_command=xdg-open
 ```
 
 - `max_results` is clamped to 5–200.
-- `qalc_binary` may be a command name or an absolute path.
 - `web_engine` accepts a built-in name or a URL template containing `%s` or
   `{query}`.
 - `open_command` is used only when the desktop cannot open a URI itself.
@@ -79,6 +77,15 @@ Press `Alt+1` on a file result to reveal it through
 `org.freedesktop.FileManager1`; if that service is unavailable, the containing
 directory is opened through the desktop's default handler. Directories open with
 `Enter`. No file-manager executable is hardcoded.
+
+## Calculator
+
+The calculator is built in and has no configuration key. It supports arithmetic,
+parentheses, percentages, powers, constants, scientific notation and the
+documented functions. Invalid expressions, division/modulo by zero, invalid
+domains and non-finite results are not shown as successful calculations.
+
+Unit conversion and base-conversion commands are not part of v1.1.0.
 
 ## Clipboard
 
@@ -183,6 +190,27 @@ network address. `cache_seconds` controls the bounded in-memory cache; the
 oldest entry is evicted when the cache is full. No weather data is written to
 disk by the plugin.
 
+## Currency
+
+```ini
+[currency]
+cache_seconds=21600
+timeout_seconds=4
+```
+
+Currency queries use explicit ISO 4217 codes, for example `300 eur to USD` or
+`100 USD to EUR`. Conversion uses Frankfurter blended reference rates from
+`api.frankfurter.dev`. Only the base currency code is sent; no API key or account
+is required.
+
+`cache_seconds` is clamped to 60–604800 seconds and controls how long a fetched
+base-currency rate set is considered fresh. Expired entries may be used as a
+cached fallback when a refresh is pending or fails; cached results are clearly
+labelled. If no cache exists and the request fails, no conversion result is
+shown. `timeout_seconds` is clamped to 1–15 seconds. Rates update daily and are
+reference rates, not bank or live trading rates. Ambiguous symbols such as `$`
+are rejected; see [PROVIDERS.md](PROVIDERS.md) for the supported code list.
+
 ## Ranking and query signals
 
 Query analysis is intentionally small and predictable:
@@ -190,9 +218,9 @@ Query analysis is intentionally small and predictable:
 - URLs, leading `!` bangs and `github`/`gh` prefixes are recognized as web/GitHub
   signals.
 - `define`, `weather`, `clip` and path queries have dedicated signals.
-- Calculator signals require arithmetic, percentage, unit, currency or base
-  conversion patterns; a bare number inside a name such as `python3` or
-  `firefox 123` is not a calculation.
+- Calculator signals require arithmetic or percentage patterns; a bare number
+  inside a name such as `python3` or `firefox 123` is not a calculation. Currency
+  syntax is parsed and validated separately before arithmetic evaluation.
 - A single word with no special form gets a strong application signal.
 - Multi-word natural-language queries get a web signal; words such as `features`,
   `configuration`, `guide`, `documentation`, `install`, `examples`,
@@ -224,9 +252,11 @@ Subprocess stdout and stderr are each capped at 4 MiB. Exceeding the cap marks t
 operation as failed and terminates the child; truncated output is never parsed as
 a successful provider result.
 
-Local results render immediately. qalc, fd, clipboard refresh, bookmark loading
-and inline weather retrieval run asynchronously. A new query cancels obsolete
-work, and callbacks from older query generations are ignored.
+Local results and native calculations render immediately. Currency retrieval, fd,
+clipboard refresh, bookmark loading, inline weather and inline dictionary run
+asynchronously. A new query cancels obsolete work, and callbacks from older query
+generations are ignored. Currency data is cached in memory and a failed refresh
+cannot block arithmetic or unrelated providers.
 
 ## Keyboard and result actions
 

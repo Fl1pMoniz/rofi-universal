@@ -92,7 +92,8 @@ typedef struct {
   int file_max_depth;
   int file_max_results;
   int clipboard_max_results;
-  char *qalc_binary;
+  int currency_cache_seconds;
+  int currency_timeout_seconds;
   char *web_engine;
   char *open_command;
   char *file_roots;
@@ -105,6 +106,8 @@ UResult *u_result_new(UProvider provider, const char *title,
 void u_result_free(gpointer data);
 void u_result_set_dedup_key(UResult *result, const char *key);
 char *u_result_display_text(const UResult *result);
+char *u_status_message(guint result_count, gboolean empty_query,
+                       gboolean has_path, const char *notice);
 void u_results_dedup(GPtrArray *results);
 int u_result_compare(gconstpointer a, gconstpointer b);
 const char *u_provider_name(UProvider provider);

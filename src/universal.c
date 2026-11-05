@@ -42,6 +42,29 @@ char *u_result_display_text(const UResult *result) {
   return g_strdup(result->title);
 }
 
+char *u_status_message(guint result_count, gboolean empty_query,
+                       gboolean has_path, const char *notice) {
+  if (empty_query) {
+    return g_markup_printf_escaped(
+        "Type to search · <b>Enter</b> open · <b>Shift+Enter</b> copy");
+  }
+  char *extra =
+      notice && *notice ? g_strdup_printf(" · %s", notice) : g_strdup("");
+  char *message;
+  if (has_path) {
+    message = g_markup_printf_escaped(
+        "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy · "
+        "<b>Alt+1</b> reveal file%s",
+        result_count, extra);
+  } else {
+    message = g_markup_printf_escaped(
+        "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy%s",
+        result_count, extra);
+  }
+  g_free(extra);
+  return message;
+}
+
 void u_result_set_dedup_key(UResult *result, const char *key) {
   if (!result) {
     return;
@@ -369,7 +392,8 @@ void u_config_init(UConfig *config) {
   config->file_max_depth = 4;
   config->file_max_results = 8;
   config->clipboard_max_results = 10;
-  config->qalc_binary = g_strdup("qalc");
+  config->currency_cache_seconds = 21600;
+  config->currency_timeout_seconds = 4;
   config->web_engine = g_strdup("duckduckgo");
   config->open_command = g_strdup("xdg-open");
   config->file_roots = g_strdup("~");
@@ -442,11 +466,15 @@ gboolean u_config_load(UConfig *config, const char *path) {
       file, "clipboard", "max_results", config->clipboard_max_results);
   config->clipboard_max_results =
       CLAMP(config->clipboard_max_results, 1, 50);
-  char *value = key_string(file, "general", "qalc_binary",
-                           config->qalc_binary);
-  g_free(config->qalc_binary);
-  config->qalc_binary = value;
-  value = key_string(file, "general", "web_engine", config->web_engine);
+  config->currency_cache_seconds = key_int(
+      file, "currency", "cache_seconds", config->currency_cache_seconds);
+  config->currency_cache_seconds =
+      CLAMP(config->currency_cache_seconds, 60, 604800);
+  config->currency_timeout_seconds = key_int(
+      file, "currency", "timeout_seconds", config->currency_timeout_seconds);
+  config->currency_timeout_seconds =
+      CLAMP(config->currency_timeout_seconds, 1, 15);
+  char *value = key_string(file, "general", "web_engine", config->web_engine);
   g_free(config->web_engine);
   config->web_engine = value;
   value = key_string(file, "general", "open_command", config->open_command);
@@ -467,7 +495,6 @@ void u_config_clear(UConfig *config) {
   if (!config) {
     return;
   }
-  g_free(config->qalc_binary);
   g_free(config->web_engine);
   g_free(config->open_command);
   g_free(config->file_roots);

@@ -16,13 +16,17 @@ Debian stable and Ubuntu 24.04 ship Rofi 1.7.5 and are not supported.
 
 See [PROVIDERS.md](PROVIDERS.md) for provider-specific dependencies and status.
 
+The calculator is implemented natively and has no external runtime dependency.
+Currency conversion is optional and uses `curl` or `wget` with network access to
+`api.frankfurter.dev`; it is disabled when no fetcher or network is available.
+
 ## Distribution dependencies
 
 ### Fedora / Nobara
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel json-glib-devel qalculate
+  glib2-devel cairo-devel json-glib-devel
 ```
 
 Optional providers:
@@ -34,7 +38,7 @@ sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ### Arch Linux
 
 ```sh
-sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalculate
+sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
 
@@ -42,7 +46,7 @@ sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
-  libglib2.0-dev libcairo2-dev libjson-glib-dev qalc
+  libglib2.0-dev libcairo2-dev libjson-glib-dev
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
 

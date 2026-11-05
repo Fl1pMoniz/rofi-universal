@@ -11,6 +11,8 @@ src/
   fetch.c        curl/wget selection and command construction
   weather.c      Weather location, URL and response parsing
   dictionary.c   Dictionary URL, JSON parsing and bounded cache
+  calculator.c   Native expression lexer, parser, evaluator and formatter
+  currency.c     Currency query parser, Frankfurter JSON and bounded cache
   universal.c    Result model, URL building and INI configuration
   universal.h    Shared interfaces
 ```
@@ -18,7 +20,8 @@ src/
 ## Query analysis
 
 `u_analyze_query()` produces independent scores for applications, calculator,
-web, files, clipboard, dictionary, GitHub and weather. A query can be relevant to
+web, files, clipboard, dictionary, GitHub and weather. Currency syntax is parsed
+and validated separately by `src/currency.c`. A query can be relevant to
 multiple providers at once. The analysis also exposes convenience fields such as
 `path_like`, `url_like`, the primary `intent` and an `explicit_provider` used to
 avoid duplicate shortcut results.
@@ -60,6 +63,30 @@ redundant Dictionary.com fallback is replaced.
 `u_score_signals()` and `u_provider_relevance()` are testable in `test_core.c`.
 Sorting is deterministic: score, provider, then title.
 
+## Native calculator and currency
+
+`src/calculator.c` is a bounded recursive-descent evaluator. It tokenizes the
+expression into a fixed array, parses unary signs, right-associative
+exponentiation, multiplication/division/modulo, addition/subtraction and
+parenthesized/function expressions, then evaluates with the C math library. It
+supports decimal and scientific literals, `0x`/`0b`/`0o` integers, `pi`, `e`, the
+documented functions, and `X% of Y`. Expression length, token count and nesting
+depth are capped. Division/modulo by zero, invalid domains, overflow and
+non-finite results return errors; the plugin does not create an inert result.
+Formatting uses `g_ascii_formatd()` so the decimal separator is independent of
+the process locale. The calculator runs synchronously during local result
+construction and never invokes a subprocess.
+
+`src/currency.c` parses `<amount> <ISO base> (to|in) <ISO quote>` queries,
+validates both codes against an embedded current ISO 4217 list with minor-unit
+metadata, builds the Frankfurter v2 rates URL, parses the JSON array with
+JSON-GLib and keeps a bounded in-memory cache keyed by base currency. Each cache
+entry retains the provider's rate date and local fetch time. Fresh entries are
+used directly; expired entries may be shown as cached while a refresh is
+attempted. A refresh failure keeps a stale cached result visible with an explicit
+cached description and status notice, or reports unavailable when no cache exists.
+Only the base currency code is sent to the provider.
+
 ## Actions
 
 The normal `Enter` action is provider-specific. `Shift+Return` uses Rofi's
@@ -97,11 +124,11 @@ The plugin keeps:
 - a `query_cancellable` replaced on every query change,
 - a `query_generation` counter.
 
-Query-specific callbacks (calculator, file search and inline weather) are applied
-only when their generation still matches the current query. Old callbacks are
-ignored after cancellation. Bookmark and clipboard results are not query-specific;
-when they arrive they rebuild local results and merge with any current async
-results.
+Query-specific callbacks (file search, currency retrieval and inline weather) are
+applied only when their generation still matches the current query. Old callbacks
+are ignored after cancellation. Bookmark and clipboard results are not
+query-specific; when they arrive they rebuild local results and merge with any
+current async results. Native calculator evaluation is synchronous and local.
 
 Inline weather uses a dedicated `WeatherJob` (mode pointer, query generation and
 city). The request is a `curl` or `wget` subprocess with a bounded timeout. Parsed
@@ -115,6 +142,12 @@ unavailable, the external wttr.in action remains.
 curl/wget selection and command construction. These are tested without network
 access. The process helper reports non-zero exits as failures, so failed curl/wget
 requests never become weather results.
+
+Currency retrieval uses the same fetch/process helpers and query generation
+protection. `src/currency.c` owns the bounded base-currency cache, JSON parsing
+and validation. `src/plugin.c` owns the pending/failed base state, retry backoff
+and status notice. A slow exchange-rate request cannot block arithmetic, files,
+applications or web results.
 
 Inline dictionary uses the same fetch and process helpers. `src/dictionary.c`
 parses dictionaryapi.dev JSON with JSON-GLib, extracts up to two definitions,
@@ -139,9 +172,13 @@ for repeated query analysis and application matching.
 successful `ShowItems` call and exact file URI. The separate file-action test
 verifies the containing-directory fallback when no service is present.
 
+`tests/test_calculator.c` covers the native arithmetic parser, functions,
+formatting, limits and error handling. `tests/test_currency.c` covers currency
+query parsing, validation, Frankfurter JSON, precision and cache behavior.
+
 `tests/test_query_regression.c` contains the structured query-intent regression
-dataset used to guard application/web/calculator/file/URL/GitHub/weather/
-dictionary/shortcut behavior.
+dataset used to guard application/web/calculator/currency/file/URL/GitHub/
+weather/dictionary/shortcut behavior.
 
 `tests/test_rapid_queries.py` exercises this path under Xvfb. It uses a fake
 fetcher for both weather and dictionary requests, sends several rapid queries
@@ -152,8 +189,8 @@ row-level assertion.
 ## Result ownership
 
 - `local_results` owns synchronously generated results.
-- `async_results` owns results produced by calculator, file search, inline
-  weather and inline dictionary.
+- `async_results` owns results produced by file search, currency retrieval,
+  inline weather and inline dictionary. Native calculator results are local.
 - `results` is a borrowed pointer array used by Rofi for display and action.
 
 `merge_results()` rebuilds the borrowed array from the two owner arrays, sorts it

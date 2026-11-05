@@ -36,9 +36,10 @@ sudo dnf builddep packaging/rofi-universal.spec
 rpmbuild -ba packaging/rofi-universal.spec
 ```
 
-`Requires: rofi` and `Requires: json-glib` are mandatory. Calculator, file,
+`Requires: rofi` and `Requires: json-glib` are mandatory. Currency, file,
 clipboard, bookmark and inline weather/dictionary tools are weak `Recommends`, so
-the plugin installs and degrades gracefully without them. The RPM is built,
+the plugin installs and degrades gracefully without them. The native calculator
+requires no external runtime tool. The RPM is built,
 installed and removed in Fedora 42 and Fedora 44 CI. It is not published in
 Fedora or Nobara repositories.
 

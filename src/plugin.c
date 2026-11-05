@@ -1,3 +1,5 @@
+#include "calculator.h"
+#include "currency.h"
 #include "dictionary.h"
 #include "fetch.h"
 #include "process.h"
@@ -9,6 +11,7 @@
 #include <rofi/mode-private.h>
 #include <rofi/mode.h>
 #include <rofi/rofi-icon-fetcher.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -70,12 +73,19 @@ typedef struct {
   guint dictionary_pending_generation;
   char *dictionary_failed_word;
   gint64 dictionary_failed_at;
+  UCurrencyCache currency_cache;
+  char *currency_pending_base;
+  guint currency_pending_generation;
+  char *currency_failed_base;
+  gint64 currency_failed_at;
+  const char *currency_notice;
 } UMode;
 
 typedef struct {
   UMode *mode;
   guint generation;
-} CalcJob;
+  char *base;
+} CurrencyJob;
 
 typedef struct {
   UMode *mode;
@@ -1092,8 +1102,204 @@ static void add_clipboard(UMode *mode, const char *query,
   g_free(search_folded);
 }
 
+static gboolean currency_retry_backoff_active(gint64 failed_at, gint64 now) {
+  if (failed_at <= 0 || now < failed_at) {
+    return FALSE;
+  }
+  return now - failed_at < (gint64)60 * G_USEC_PER_SEC;
+}
+
+static gboolean add_currency_result(UMode *mode, const UCurrencyQuery *query,
+                                    const UCurrencyRates *rates,
+                                    gboolean fresh) {
+  double rate = 1.0;
+  gboolean same_currency = g_strcmp0(query->base, query->quote) == 0;
+  if (!same_currency &&
+      (!rates || !u_currency_rate(rates, query->quote, &rate))) {
+    return FALSE;
+  }
+  double converted = query->amount * rate;
+  if (!isfinite(converted)) {
+    return FALSE;
+  }
+  char *source = u_calc_format(query->amount);
+  char *target =
+      u_currency_format_amount(converted, u_currency_minor_units(query->quote));
+  if (!source || !target) {
+    g_free(source);
+    g_free(target);
+    return FALSE;
+  }
+  char *title = g_strdup_printf("%s %s = %s %s", source, query->base, target,
+                                query->quote);
+  char *description;
+  if (same_currency) {
+    description = g_strdup("Same currency · no conversion");
+  } else if (fresh) {
+    description = g_strdup_printf(
+        "Reference rate · Frankfurter · Rate date: %s", rates->date);
+  } else {
+    description = g_strdup_printf(
+        "Cached rate · Frankfurter · Rate date: %s", rates->date);
+  }
+  add_result(mode, u_result_new(U_PROVIDER_CALC, title, description,
+                                "accessories-calculator", fresh ? 1000 : 950,
+                                U_ACTION_COPY, title, title));
+  g_free(description);
+  g_free(title);
+  g_free(target);
+  g_free(source);
+  return TRUE;
+}
+
+static void currency_finished(const char *stdout_text, const char *stderr_text,
+                              int exit_status, gboolean success, gpointer data) {
+  (void)stderr_text;
+  (void)exit_status;
+  CurrencyJob *job = data;
+  UMode *mode = job->mode;
+  if (mode) {
+    UCurrencyRates *rates = NULL;
+    if (success && stdout_text) {
+      rates = u_currency_parse_rates(stdout_text, job->base);
+    }
+    if (rates) {
+      u_currency_cache_put(&mode->currency_cache, rates,
+                           g_get_monotonic_time());
+      g_clear_pointer(&mode->currency_failed_base, g_free);
+      mode->currency_failed_at = 0;
+    } else {
+      g_free(mode->currency_failed_base);
+      mode->currency_failed_base = g_strdup(job->base);
+      mode->currency_failed_at = g_get_monotonic_time();
+    }
+    if (mode->currency_pending_base &&
+        g_strcmp0(mode->currency_pending_base, job->base) == 0 &&
+        mode->currency_pending_generation == job->generation) {
+      g_clear_pointer(&mode->currency_pending_base, g_free);
+      mode->currency_pending_generation = 0;
+    }
+    if (mode->query_generation == job->generation) {
+      rebuild_local_results(mode);
+      merge_results(mode);
+      schedule_reload(mode);
+    }
+  }
+  remove_job(mode, job);
+  g_free(job->base);
+  g_free(job);
+}
+
+static gboolean start_currency(UMode *mode, const char *base) {
+  char *fetcher_path = NULL;
+  UFetcher fetcher = u_fetch_find(&fetcher_path);
+  if (fetcher == U_FETCH_NONE) {
+    g_free(fetcher_path);
+    mode->currency_notice = "currency conversion needs curl or wget";
+    return FALSE;
+  }
+  char *url = u_currency_rates_url(base);
+  char **argv = u_fetch_build_argv(fetcher, fetcher_path, url,
+                                   mode->config.currency_timeout_seconds);
+  g_free(url);
+  g_free(fetcher_path);
+  if (!argv) {
+    mode->currency_notice = "currency conversion unavailable";
+    return FALSE;
+  }
+  CurrencyJob *job = g_new0(CurrencyJob, 1);
+  job->mode = mode;
+  job->generation = mode->query_generation;
+  job->base = g_strdup(base);
+  g_free(mode->currency_pending_base);
+  mode->currency_pending_base = g_strdup(base);
+  mode->currency_pending_generation = job->generation;
+  mode->currency_notice = "fetching exchange rate";
+  g_ptr_array_add(mode->jobs, job);
+  u_process_run((const char *const *)argv, mode->query_cancellable,
+                currency_finished, job);
+  g_strfreev(argv);
+  return TRUE;
+}
+
+static void add_currency(UMode *mode, const UCurrencyQuery *query) {
+  gint64 now = g_get_monotonic_time();
+  if (g_strcmp0(query->base, query->quote) == 0) {
+    add_currency_result(mode, query, NULL, TRUE);
+    return;
+  }
+  gboolean fresh = FALSE;
+  UCurrencyRates *rates =
+      u_currency_cache_get(&mode->currency_cache, query->base, now, &fresh);
+  if (rates) {
+    if (!add_currency_result(mode, query, rates, fresh)) {
+      mode->currency_notice = "currency rate unavailable";
+      return;
+    }
+    if (fresh) {
+      return;
+    }
+    if (mode->currency_pending_base &&
+        g_strcmp0(mode->currency_pending_base, query->base) == 0 &&
+        mode->currency_pending_generation == mode->query_generation) {
+      mode->currency_notice = "fetching exchange rate";
+      return;
+    }
+    if (mode->currency_failed_base &&
+        g_strcmp0(mode->currency_failed_base, query->base) == 0 &&
+        currency_retry_backoff_active(mode->currency_failed_at, now)) {
+      mode->currency_notice = "refresh failed; using cached rate";
+      return;
+    }
+    start_currency(mode, query->base);
+    return;
+  }
+  if (mode->currency_pending_base &&
+      g_strcmp0(mode->currency_pending_base, query->base) == 0 &&
+      mode->currency_pending_generation == mode->query_generation) {
+    mode->currency_notice = "fetching exchange rate";
+    return;
+  }
+  if (mode->currency_failed_base &&
+      g_strcmp0(mode->currency_failed_base, query->base) == 0 &&
+      currency_retry_backoff_active(mode->currency_failed_at, now)) {
+    mode->currency_notice = "currency rate unavailable";
+    return;
+  }
+  start_currency(mode, query->base);
+}
+
+static void add_calculator(UMode *mode, const char *query) {
+  if (!mode->config.calculator) {
+    return;
+  }
+  UCurrencyQuery currency;
+  if (u_currency_parse_query(query, &currency)) {
+    add_currency(mode, &currency);
+    return;
+  }
+  if (mode->analysis.calc_score < 600) {
+    return;
+  }
+  double value = 0;
+  if (u_calc_evaluate(query, &value) != U_CALC_OK) {
+    return;
+  }
+  char *text = u_calc_format(value);
+  if (!text) {
+    return;
+  }
+  char *description = g_strdup("Calculator · copy result");
+  add_result(mode, u_result_new(U_PROVIDER_CALC, text, description,
+                                "accessories-calculator", 1000, U_ACTION_COPY,
+                                text, text));
+  g_free(description);
+  g_free(text);
+}
+
 static void rebuild_local_results(UMode *mode) {
   g_ptr_array_set_size(mode->local_results, 0);
+  mode->currency_notice = NULL;
   char *query = g_strdup(mode->query ? mode->query : "");
   char *folded = fold_string(query);
   if (mode->analysis.intent == U_INTENT_EMPTY) {
@@ -1102,14 +1308,8 @@ static void rebuild_local_results(UMode *mode) {
     g_free(folded);
     return;
   }
-  if (mode->analysis.calc_score >= 600 && mode->config.calculator &&
-      !g_find_program_in_path(mode->config.qalc_binary)) {
-    add_result(mode, u_result_new(U_PROVIDER_CALC, "Calculator unavailable",
-                                  "Calculator · install qalc (Qalculate!)",
-                                  "accessories-calculator", 300,
-                                  U_ACTION_NONE, NULL, NULL));
-  }
   add_apps(mode, folded);
+  add_calculator(mode, query);
   add_web(mode, query, folded);
   add_dictionary(mode, query, folded);
   add_github(mode, query, folded);
@@ -1159,49 +1359,6 @@ static void sync_from_view(UMode *mode) {
   if (state && update_query(mode, rofi_view_get_user_input(state))) {
     schedule_reload(mode);
   }
-}
-
-static void calc_finished(const char *stdout_text, const char *stderr_text,
-                          int exit_status, gboolean success, gpointer data) {
-  (void)stderr_text;
-  (void)exit_status;
-  CalcJob *job = data;
-  UMode *mode = job->mode;
-  if (mode && success && mode->query_generation == job->generation &&
-      stdout_text) {
-    char *text = g_strstrip(g_strdup(stdout_text));
-    if (*text && !g_str_has_prefix(text, "error") &&
-        !strstr(text, "error:") && !strstr(text, "warning:")) {
-      char *description = g_strdup("Calculator · copy result");
-      add_async_result(mode,
-                       u_result_new(U_PROVIDER_CALC, text, description,
-                                    "accessories-calculator", 1000,
-                                    U_ACTION_COPY, text, text));
-      g_free(description);
-      merge_results(mode);
-      schedule_reload(mode);
-    }
-    g_free(text);
-  }
-  remove_job(mode, job);
-  g_free(job);
-}
-
-static void start_calc(UMode *mode) {
-  if (!mode->config.calculator || mode->analysis.calc_score < 600 ||
-      !mode->query || !*mode->query) {
-    return;
-  }
-  if (!g_find_program_in_path(mode->config.qalc_binary)) {
-    return;
-  }
-  const char *argv[] = {mode->config.qalc_binary, "-t", "+u8", "-s",
-                        "update_exchange_rates 1days", mode->query, NULL};
-  CalcJob *job = g_new0(CalcJob, 1);
-  job->mode = mode;
-  job->generation = mode->query_generation;
-  g_ptr_array_add(mode->jobs, job);
-  u_process_run(argv, mode->query_cancellable, calc_finished, job);
 }
 
 static void files_finished(const char *stdout_text, const char *stderr_text,
@@ -1530,7 +1687,6 @@ static gboolean update_query(UMode *mode, const char *input) {
   g_ptr_array_set_size(mode->async_results, 0);
   u_analyze_query(mode->query, &mode->analysis);
   rebuild_local_results(mode);
-  start_calc(mode);
   start_files(mode);
   merge_results(mode);
   return TRUE;
@@ -1559,6 +1715,8 @@ static int universal_init(Mode *sw) {
   mode->query_cancellable = g_cancellable_new();
   mode->query = g_strdup("");
   u_analyze_query(mode->query, &mode->analysis);
+  u_currency_cache_init(&mode->currency_cache,
+                        mode->config.currency_cache_seconds, 8);
   load_apps(mode);
   rebuild_local_results(mode);
   merge_results(mode);
@@ -1596,10 +1754,13 @@ static void universal_destroy(Mode *sw) {
   g_ptr_array_free(mode->clipboard_entries, TRUE);
   u_weather_cache_clear(&mode->weather_cache);
   u_dictionary_cache_clear(&mode->dictionary_cache);
+  u_currency_cache_clear(&mode->currency_cache);
   g_free(mode->weather_pending_city);
   g_free(mode->weather_failed_city);
   g_free(mode->dictionary_pending_word);
   g_free(mode->dictionary_failed_word);
+  g_free(mode->currency_pending_base);
+  g_free(mode->currency_failed_base);
   g_free(mode->query);
   u_config_clear(&mode->config);
   g_free(mode);
@@ -1688,19 +1849,9 @@ static char *universal_get_message(const Mode *sw) {
       break;
     }
   }
-  if (!mode->query || !*mode->query) {
-    return g_markup_printf_escaped(
-        "Type to search · <b>Enter</b> open · <b>Shift+Enter</b> copy");
-  }
-  if (has_path) {
-    return g_markup_printf_escaped(
-        "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy · "
-        "<b>Alt+1</b> reveal file",
-        mode->results->len);
-  }
-  return g_markup_printf_escaped(
-      "%u results · <b>Enter</b> open · <b>Shift+Enter</b> copy",
-      mode->results->len);
+  return u_status_message(mode->results->len,
+                          !mode->query || !*mode->query, has_path,
+                          mode->currency_notice);
 }
 
 static ModeMode universal_result(Mode *sw, int menu_entry, char **input,

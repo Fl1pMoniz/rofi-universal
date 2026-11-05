@@ -1,6 +1,6 @@
 # Provider support matrix
 
-This matrix describes the providers shipped with rofi-universal 1.0.0. Status
+This matrix describes the providers shipped with rofi-universal 1.1.0. Status
 reflects the current implementation and test coverage, not a promise of
 compatibility with every desktop environment.
 
@@ -8,7 +8,8 @@ compatibility with every desktop environment.
 | --- | --- | --- | --- | --- | --- |
 | Applications | Stable | freedesktop desktop entries via GIO | No | Launch application | No result if no matching entry |
 | Files | Stable with limitations | `fd` optional; default desktop handler | No | Open file/directory; Alt+1 reveal | Direct path open; containing-directory fallback |
-| Calculator | Stable with limitations | `qalc` required | qalc exchange rates may use network | Copy result | No calculator result; web fallback |
+| Calculator | Stable | Native C evaluator; no external binary | No | Copy result | Invalid expressions yield no calculator result |
+| Currency | Stable with limitations | `curl` or `wget`; Frankfurter | Yes, base currency only | Copy converted amount | Cached rate; status notice when unavailable |
 | Web search | Stable with limitations | Default browser/URL handler | Only when browser opens a search | Open browser URL | No inline result |
 | Clipboard | Stable with limitations | `cliphist`; `wl-copy` or `xclip`/`xsel` | No | Copy selected text | No result when unavailable |
 | Dictionary | Stable with limitations | `curl` or `wget`; dictionaryapi.dev | Yes, requested word only | Open detailed reference | Browser links |
@@ -44,13 +45,47 @@ compatibility with every desktop environment.
 
 ## Calculator
 
-- Examples: `25 * 18`, `25% of 180`, `10 km to miles`, `10 EUR to USD`,
-  `0xff`, `0b1010`, `0o755`.
-- Uses `qalc` and preserves qalc's formatting.
-- The first currency conversion may refresh exchange rates and require network
-  access.
-- Calculation detection is deterministic and intentionally conservative.
-- If `qalc` is missing or fails, no calculator result is shown.
+- Examples: `25 * 18`, `100 / 4`, `sqrt(144)`, `2^10`, `(25 + 15) * 2`,
+  `25% of 180`, `0xff`, `0b1010`, `0o755`.
+- Implemented natively in C; it never invokes a shell, another calculator, Python, JavaScript
+  or another program.
+- Supports `+`, `-`, `*`, `/`, `%`, `^`, parentheses, unary signs, decimals,
+  scientific notation, `pi`, `e`, and `sqrt`, `abs`, `sin`, `cos`, `tan`,
+  `asin`, `acos`, `atan`, `log`, `log10`, `ln`, `exp`, `floor`, `ceil`,
+  `round`.
+- Exponentiation is right-associative. `-2^2` is `-(2^2)` and `2^3^2` is
+  `2^(3^2)`. Implicit multiplication is not supported. `log` and `ln` are
+  natural logarithms; `log10` is base 10. `round` rounds halfway cases away
+  from zero.
+- `%` is binary modulo when followed by an operand. A trailing `%` is a
+  percentage and `X% of Y` is supported.
+- Division/modulo by zero, invalid domains, overflow, non-finite results,
+  excessive length, excessive nesting and excessive token counts are rejected.
+- Results are formatted with a locale-independent decimal separator and no
+  unnecessary trailing zeroes.
+- No external calculator executable is required at build, install or runtime.
+- Unit conversion and base-conversion commands are not part of v1.1.0.
+
+## Currency
+
+- Examples: `300 eur to USD`, `100 USD to EUR`, `50 gbp in eur`,
+  `1000 JPY to USD`, `25 usd in eur`.
+- Uses the public Frankfurter v2 API at `api.frankfurter.dev`.
+- Only the base currency code is sent. No API key, account or credentials are
+  required.
+- Results are asynchronous and cached in memory by base currency. Fresh results
+  show `Reference rate · Frankfurter · Rate date: YYYY-MM-DD`.
+- Cached-but-expired rates may be shown while a refresh is attempted or after a
+  refresh failure; their description says `Cached rate`.
+- If no usable cached rate exists and the request fails, no conversion result is
+  shown and the status line reports the failure. A normal web search may remain
+  available, but it is not presented as a conversion.
+- Frankfurter rates are blended reference rates, not bank, commercial,
+  transaction or live trading rates. Rates update daily and may lag the market.
+- Currency symbols such as `$` are not accepted. Use explicit ISO 4217 codes.
+- Supported codes: AED, AFN, ALL, AMD, ANG, AOA, ARS, AUD, AWG, AZN, BAM, BBD, BDT, BGN, BHD, BIF, BMD, BND, BOB, BRL, BSD, BTN, BWP, BYN, BZD, CAD, CDF, CHF, CLP, CNY, COP, CRC, CUP, CVE, CZK, DJF, DKK, DOP, DZD, EGP, ERN, ETB, EUR, FJD, FKP, GBP, GEL, GHS, GIP, GMD, GNF, GTQ, GYD, HKD, HNL, HTG, HUF, IDR, ILS, INR, IQD, IRR, ISK, JMD, JOD, JPY, KES, KGS, KHR, KMF, KPW, KRW, KWD, KYD, KZT, LAK, LBP, LKR, LRD, LSL, LYD, MAD, MDL, MGA, MKD, MMK, MNT, MOP, MRU, MUR, MVR, MWK, MXN, MYR, MZN, NAD, NGN, NIO, NOK, NPR, NZD, OMR, PAB, PEN, PGK, PHP, PKR, PLN, PYG, QAR, RON, RSD, RUB, RWF, SAR, SBD, SCR, SDG, SEK, SGD, SHP, SLE, SOS, SRD, SSP, STN, SVC, SYP, SZL, THB, TJS, TMT, TND, TOP, TRY, TTD, TWD, TZS, UAH, UGX, USD, UYU, UZS, VES, VND, VUV, WST, XAF, XCD, XOF, XPF, YER, ZAR, ZMW.
+- Currencies with zero minor units: BIF, CLP, DJF, GNF, ISK, JPY, KMF, KRW, PYG, RWF, UGX, VND, VUV, XAF, XOF, XPF.
+- Currencies with three minor units: BHD, IQD, JOD, KWD, LYD, OMR, TND.
 
 ## Web search
 

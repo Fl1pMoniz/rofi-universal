@@ -3,6 +3,53 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [1.1.0] - 2026-11-05
+
+### Added
+
+- Native C mathematical calculator with arithmetic, parentheses, powers,
+  percentages, hexadecimal/binary/octal integers, constants and documented math
+  functions.
+- Inline Frankfurter currency conversion for explicit ISO 4217 codes, with
+  asynchronous fetching, bounded in-memory caching by base currency, provider
+  rate dates, stale-cache labelling and graceful failure states.
+- Calculator and currency unit test suites plus a headless Xvfb integration test.
+- Currency configuration for cache lifetime and request timeout.
+
+### Validation
+
+- 8 Meson suites / 94 tests cover native arithmetic, formatting, limits,
+  currency parsing, JSON validation, precision, cache behavior, query intent,
+  configuration and existing providers.
+- Xvfb integration covers native calculations, inline Frankfurter conversion,
+  cache reuse, slow-request isolation, failure handling, rapid query/teardown,
+  file reveal, clipboard actions and FileManager1.
+- GCC and Clang release builds, GCC `-fanalyzer`, ASan/UBSan, Fedora RPM,
+  Arch package, Debian-family source builds, plugin loading and install/uninstall
+  lifecycles remain part of the release validation matrix.
+
+### Changed
+
+- Removed the external calculator runtime dependency and its configuration.
+- Currency results are reference rates from a public provider, not bank or live
+  trading rates.
+- Calculator results are evaluated locally and synchronously; currency requests
+  use the existing cancellable process/fetch infrastructure.
+- Documentation, example configuration, packaging metadata and CI tests now
+  describe the native calculator and currency provider.
+
+### Limitations
+
+- Currency conversion requires `curl` or `wget` and network access when no fresh
+  cached rate exists. Cached stale rates are explicitly labelled.
+- Currency accepts explicit ISO 4217 codes only; ambiguous symbols such as `$`
+  are rejected.
+- Unit conversion and base-conversion commands are not part of v1.1.0.
+- The native parser does not support implicit multiplication, variables or
+  equations.
+- Debian stable and Ubuntu 24.04 remain unsupported because they ship Rofi
+  1.7.5.
+
 ## [1.0.0] - 2026-11-05
 
 ### Stable

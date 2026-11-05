@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '1.0.0',
+  version: '1.1.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -11,13 +11,16 @@ glib = dependency('glib-2.0', version: '>=2.72')
 gio = dependency('gio-2.0')
 gio_unix = dependency('gio-unix-2.0')
 json_glib = dependency('json-glib-1.0', version: '>=1.6')
+cc = meson.get_compiler('c')
+math = cc.find_library('m', required: false)
 deps = [rofi, glib, gio, gio_unix, dependency('gmodule-2.0'),
-        dependency('cairo'), json_glib]
+        dependency('cairo'), json_glib, math]
 
 shared_module(
   'universal',
   ['src/universal.c', 'src/query.c', 'src/plugin.c', 'src/process.c',
-   'src/weather.c', 'src/fetch.c', 'src/dictionary.c'],
+   'src/weather.c', 'src/fetch.c', 'src/dictionary.c', 'src/calculator.c',
+   'src/currency.c'],
   dependencies: deps,
   install: true,
   install_dir: get_option('libdir') / 'rofi',
@@ -90,3 +93,19 @@ test_dictionary = executable(
   include_directories: include_directories('src'),
 )
 test('dictionary', test_dictionary)
+
+test_calculator = executable(
+  'test-calculator',
+  ['tests/test_calculator.c', 'src/calculator.c'],
+  dependencies: [glib, math],
+  include_directories: include_directories('src'),
+)
+test('calculator', test_calculator)
+
+test_currency = executable(
+  'test-currency',
+  ['tests/test_currency.c', 'src/currency.c'],
+  dependencies: [glib, json_glib, math],
+  include_directories: include_directories('src'),
+)
+test('currency', test_currency)

@@ -2,9 +2,9 @@
 
 **One launcher. One search field. Multiple capabilities. Automatic intent detection.**
 
-`rofi-universal` is a single Rofi mode that combines applications, calculations,
-currency and unit conversions, web searches, files, clipboard history, bookmarks
-and a few productivity shortcuts into one live search interface. It is inspired
+`rofi-universal` is a single Rofi mode that combines applications, native
+calculations, currency conversion, web searches, files, clipboard history,
+bookmarks and a few productivity shortcuts into one live search interface. It is inspired
 by KDE KRunner and macOS Spotlight, but stays lightweight and uses ordinary
 command-line tools instead of a background daemon or an AI service.
 
@@ -25,8 +25,11 @@ type, and you do not need to switch modes or remember a prefix for normal use.
   generic names, keywords, desktop IDs and executables. A query may start with an
   application name (`steam games`) without letting every catalogue entry outrank
   the application itself.
-- **Calculator** through `qalc` from Qalculate!: arithmetic, equations,
-  percentages, units and currency conversion (`500 EUR to USD`, `10 km to miles`).
+- **Calculator** implemented natively in C: arithmetic, parentheses, percentages,
+  powers, constants and documented math functions, with no external calculator
+  executable. `log`/`ln` are natural logarithms and `log10` is base 10; `%` is
+  modulo or postfix percentage. Currency conversion uses Frankfurter reference
+  rates (`300 eur to USD`) and remains asynchronous and cached.
 - **Web search** with DuckDuckGo, Google, Brave, Bing, Startpage or a custom URL
   template; supports URLs, bare common domains such as `github.com/rofi`, and
   `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`, `!define`, `!arch`, `!man`,
@@ -57,9 +60,10 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 - **Keyboard-first**: `Enter` runs the selected result; `Shift+Enter` copies its
   URL, path, value or title to the clipboard.
 - **Non-blocking lifecycle**: file searches, clipboard refresh, bookmark loading,
-  inline weather, inline dictionary and `qalc` run asynchronously. New queries
-  cancel obsolete work and stale callbacks are rejected by generation checks.
-  Subprocess output is bounded per stream.
+  currency retrieval, inline weather and inline dictionary run asynchronously.
+  New queries cancel obsolete work and stale callbacks are rejected by generation
+  checks. Subprocess output is bounded per stream. Local arithmetic never waits
+  for network or an external binary.
 
 ## Screenshot
 
@@ -67,7 +71,7 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ## Demo
 
-![Animated demo: applications, calculator, currency, units, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
+![Animated demo: applications, calculator, currency, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
 
 The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
 interaction and result presentation; v0.3 added inline weather, v0.4 improved
@@ -75,8 +79,10 @@ ranking and search categories, v0.5 added inline dictionary definitions, v0.6
 improved URL recognition and action-oriented descriptions, v0.7 added file
 reveal actions and bounded clipboard decoding, v0.8 added reliability and
 query-regression coverage, v0.9 added verified Ubuntu 26.04/Debian testing
-source installation and a provider support matrix, and v1.0 is the first stable
-release.
+source installation and a provider support matrix, and v1.0 was the first stable
+release. v1.1 replaces the external calculator with a native calculator and
+the Frankfurter currency provider; the old demo may still show former
+examples.
 
 ## Requirements
 
@@ -86,8 +92,10 @@ release.
   Rofi **1.7.9** (Fedora 42) and Rofi **2.0.0** (Fedora 44 and Arch Linux).
   Interactive Wayland testing uses Rofi **2.0.0**.
 - GLib/GIO and JSON-GLib development headers, a C compiler, Meson and Ninja
-- `qalc` from [Qalculate!](https://qalculate.github.io/) for calculations,
-  units and currency conversion
+
+The mathematical calculator has no external runtime dependency. Currency
+conversion is optional and needs `curl` or `wget` plus network access when a
+fresh Frankfurter rate is not already cached.
 
 ### Optional providers
 
@@ -98,6 +106,7 @@ release.
 | Bookmarks | `jq` for Chromium-family, `sqlite3` for Firefox/Zen |
 | Inline weather | `curl` or `wget`; network access to wttr.in |
 | Inline dictionary | `curl` or `wget`; network access to dictionaryapi.dev |
+| Currency | `curl` or `wget`; network access to api.frankfurter.dev |
 | URL/file opening | `xdg-open` or the desktop's default URL handler |
 | Web search | a browser registered as the default URL handler |
 
@@ -107,7 +116,7 @@ release.
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
-  glib2-devel cairo-devel json-glib-devel qalculate
+  glib2-devel cairo-devel json-glib-devel
 # Optional:
 sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ```
@@ -115,7 +124,7 @@ sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ### Arch Linux
 
 ```sh
-sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib qalculate
+sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo json-glib
 # Optional:
 sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
@@ -124,7 +133,7 @@ sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 
 ```sh
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
-  libglib2.0-dev libcairo2-dev libjson-glib-dev qalc
+  libglib2.0-dev libcairo2-dev libjson-glib-dev
 # Optional:
 sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
@@ -252,7 +261,6 @@ Example:
 ```ini
 [general]
 max_results=40
-qalc_binary=qalc
 web_engine=duckduckgo
 open_command=xdg-open
 
@@ -285,6 +293,10 @@ timeout_seconds=4
 location=
 cache_seconds=600
 timeout_seconds=4
+
+[currency]
+cache_seconds=21600
+timeout_seconds=4
 ```
 
 `web_engine` accepts `duckduckgo`, `google`, `brave`, `bing`, `startpage`,
@@ -314,10 +326,12 @@ dependencies, external-service behavior and current limitations.
 
 | Query | Result |
 | --- | --- |
-| `25 * 18` | Calculator result |
-| `25% of 180` | Percentage calculation |
-| `500 EUR to USD` | Currency conversion |
-| `10 km to miles` | Unit conversion |
+| `25 * 18` | Calculator result: `450` |
+| `sqrt(144)` | Native function result: `12` |
+| `(25 + 15) * 2` | Parenthesized result: `80` |
+| `25% of 180` | Percentage calculation: `45` |
+| `300 eur to USD` | Currency conversion using a reference rate |
+| `1000 JPY to USD` | Currency conversion with yen precision |
 | `firefox` | Application (when installed) |
 | `firefox 123` | Web search, without a false calculator result |
 | `python 3.14 features` | Web search, not a calculation |
@@ -359,6 +373,8 @@ src/
   fetch.c        curl/wget selection and command construction
   weather.c      Weather location, URL and response parsing
   dictionary.c   Dictionary URL, JSON parsing and cache helpers
+  calculator.c   Native expression parser, evaluator and formatter
+  currency.c     Currency query parser, Frankfurter JSON and bounded cache
   universal.c    Result model, URL building and configuration
   universal.h    Shared interfaces
 tests/
@@ -367,10 +383,13 @@ tests/
   test_weather.c Weather location, URL and response parsing tests
   test_fetch.c   HTTP fetcher selection and command tests
   test_dictionary.c Dictionary URL, JSON parsing and cache tests
+  test_calculator.c Native arithmetic, functions, limits and formatting tests
+  test_currency.c Currency query, JSON, precision and cache tests
   test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
   test_file_actions.py Xvfb Alt+1 reveal fallback test
   test_filemanager_dbus.py Mock FileManager1 success-path test
   test_clipboard_actions.py Xvfb clipboard decode/copy test with fake tools
+  test_calculator_currency.py Xvfb native calculation and currency tests
   test_query_regression.c Structured query-intent and negative regression cases
   benchmark_core.c Optional query, matching, formatting and dedup benchmark
 ```
@@ -392,21 +411,24 @@ combines match quality, provider relevance and a local-action bonus:
 6. Results are sorted deterministically by score, provider and title.
 
 Async work uses a query-generation counter and a per-query `GCancellable`.
-Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh,
-bookmark loading, inline weather and inline dictionary retrieval run through
-`src/process.c`; obsolete processes are cancelled and callbacks for older
-generations are ignored. Bookmark, clipboard, weather and dictionary data are held
-only in memory for the plugin's lifetime. Subprocess stdout/stderr are capped at
-4 MiB per stream; exceeding the cap marks the operation failed and terminates the
-child.
+Applications, native calculations and local analysis render immediately. File
+search, clipboard refresh, bookmark loading, currency retrieval, inline weather
+and inline dictionary retrieval run through `src/process.c`; obsolete processes
+are cancelled and callbacks for older generations are ignored. Bookmark,
+clipboard, currency, weather and dictionary data are held only in memory for the
+plugin's lifetime. Subprocess stdout/stderr are capped at 4 MiB per stream;
+exceeding the cap marks the operation failed and terminates the child.
 
 No prompt is sent to an AI model. No daemon runs in the background. Network access
-only happens when `qalc` refreshes exchange rates, when a weather query requests an
-inline summary, when a dictionary query requests a definition, or when the user
-chooses a web action. Bookmark stores are read locally. Inline weather requires
-`curl` or `wget` and sends the requested city to wttr.in. Inline dictionary
-requires `curl` or `wget` and sends only the requested word to dictionaryapi.dev.
-Browser fallbacks remain when either service or a fetcher is unavailable.
+only happens when a currency query needs a Frankfurter reference rate, when a
+weather query requests an inline summary, when a dictionary query requests a
+definition, or when the user chooses a web action. Bookmark stores are read
+locally. Currency conversion sends only the base currency code to
+api.frankfurter.dev and caches the returned reference rates in memory. Inline
+weather requires `curl` or `wget` and sends the requested city to wttr.in. Inline
+dictionary requires `curl` or `wget` and sends only the requested word to
+dictionaryapi.dev. Browser fallbacks remain when a service or a fetcher is
+unavailable.
 
 ## Extending
 
@@ -418,8 +440,8 @@ live in `src/query.c`; reusable process execution lives in `src/process.c`.
 2. Add a `U_PROVIDER_*` value in `src/universal.h` if needed.
 3. Add provider relevance in `src/query.c`.
 4. Use `u_process_run()` for subprocess work; never block the UI.
-5. Add a test in `tests/test_core.c`, `tests/test_process.c` or
-   `tests/test_weather.c`.
+5. Add a test in the relevant module test file and extend
+   `tests/test_query_regression.c` for new query forms.
 6. Run `meson test -C build` and an interactive smoke test.
 
 Please keep new providers local-first and dependency-tolerant. A missing tool
@@ -435,16 +457,19 @@ meson test -C build --print-errorlogs
 
 The core tests check query analysis, application/file match helpers, URL
 encoding, GitHub/web URL construction, provider relevance, ranking, deduplication,
-dictionary query forms, configuration and invalid input. The weather and dictionary
-tests use fixtures and do not require network access. The fetch tests check
-curl/wget selection and command construction. The process tests cover success,
-output limits, partial reads, large stderr, timeout, continuous output,
-invalid UTF-8, cancellation, failures and spawn errors. The rapid-query smoke
-test requires Xvfb and `xdotool`; it starts Rofi with a fake fetcher, exercises
-weather and dictionary requests, and closes the launcher while work is pending.
-The file-action test uses a fake open command and verifies the Alt+1 fallback
-opens the containing directory when FileManager1 is unavailable. An interactive
-smoke test can be run on Wayland:
+config and invalid input. The weather, dictionary, calculator and currency tests
+use fixtures and do not require network access. The fetch tests check curl/wget
+selection and command construction. The process tests cover success, output
+limits, partial reads, large stderr, timeout, continuous output, invalid UTF-8,
+cancellation, failures and spawn errors. The rapid-query smoke test requires Xvfb
+and `xdotool`; it starts Rofi with a fake fetcher, exercises weather and
+dictionary requests, and closes the launcher while work is pending. The
+file-action test verifies the Alt+1 fallback. The calculator/currency integration
+test uses fake `curl` and clipboard helpers to verify native arithmetic and
+inline Frankfurter conversion without an external calculator, network access or
+the real clipboard.
+
+An interactive smoke test can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -472,10 +497,18 @@ The plugin path is wrong. `rofi-universal` sets `ROFI_PLUGIN_PATH` automatically
 If launching Rofi directly, point `-plugin-path` or `ROFI_PLUGIN_PATH` at the
 directory containing `libuniversal.so`.
 
-**Calculator does nothing**
-Install `qalculate` and make sure `qalc` is on `PATH`, or set `qalc_binary` in the
-configuration. The first currency lookup may take a moment while qalc refreshes
-exchange rates.
+**Calculator shows no result**
+The calculator is built in and needs no external executable. Check the expression
+for balanced parentheses, supported function names and finite values. Division or
+modulo by zero, invalid domains and overflow are rejected rather than shown as a
+successful result.
+
+**Currency conversion is not shown**
+Install `curl` or `wget` and allow network access to `api.frankfurter.dev`. The
+first lookup for a base currency is asynchronous; later queries reuse the
+bounded in-memory cache. If a refresh fails, a cached rate may still be shown and
+is labelled as cached. The status line reports fetching or unavailable states.
+Only ISO 4217 codes from the documented supported list are accepted.
 
 **Files do not appear**
 Install `fd`. File search is limited by `max_depth`, `max_results` and a short
@@ -517,6 +550,16 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   unauthenticated search rate limits make typing-driven requests unreliable.
 - Inline dictionary depends on dictionaryapi.dev. It falls back to browser links
   if the service, network or fetcher is unavailable.
+- Currency conversion uses Frankfurter blended reference rates, not bank,
+  commercial, transaction or live trading rates. Rates update daily and are
+  cached in memory; stale cached rates are labelled as cached. Currency without
+  a valid cached rate and without network access is reported as unavailable.
+- Currency conversion accepts explicit ISO 4217 codes, not ambiguous currency
+  symbols. The supported code list is embedded and documented.
+- Unit conversion and base-conversion commands (for example `10 km to miles` or
+  `150 to hex`) are not part of v1.1. Use a web search for those queries.
+- The native parser does not support implicit multiplication (`2(3)`), variables,
+  equations or arbitrary functions.
 - Neither the RPM nor the PKGBUILD is published in official distribution
   repositories.
 - Debian stable and Ubuntu 24.04 are unsupported because they ship Rofi 1.7.5;
@@ -542,10 +585,11 @@ Original code is licensed under the [MIT License](LICENSE).
 Copyright (c) 2026 Fl1pMoniz.
 
 External tools are invoked through their command-line interfaces and are not
-bundled. Their licenses remain their own: Rofi (MIT/X11), Qalculate!/qalc
-(GPL-2.0-or-later), fd (MIT/Apache-2.0 and Unicode-DFS-2016), cliphist
-(GPL-3.0-only), jq (MIT and ICU/CC-BY-3.0), SQLite (public domain),
-wl-clipboard (GPL-3.0-or-later), xclip/xsel (GPL/MIT as applicable).
+bundled. Their licenses remain their own: Rofi (MIT/X11), fd (MIT/Apache-2.0 and
+Unicode-DFS-2016), cliphist (GPL-3.0-only), jq (MIT and ICU/CC-BY-3.0), SQLite
+(public domain), wl-clipboard (GPL-3.0-or-later), xclip/xsel (GPL/MIT as
+applicable). Currency data is provided by [Frankfurter](https://frankfurter.dev/)
+as blended reference rates.
 
 ## Acknowledgements
 
@@ -553,7 +597,7 @@ wl-clipboard (GPL-3.0-or-later), xclip/xsel (GPL/MIT as applicable).
   launcher experience.
 - [rofi-calc](https://github.com/svenstaro/rofi-calc) for demonstrating live
   plugin updates; this project does not copy its source.
-- [Qalculate!](https://qalculate.github.io/) for the calculation engine.
+- [Frankfurter](https://frankfurter.dev/) for public exchange-rate reference data.
 - [rofi-web-search](https://github.com/pdonadeo/rofi-web-search) for showing what
   a small web-search mode can do.
 

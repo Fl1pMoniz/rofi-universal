@@ -1,6 +1,6 @@
 # Maintainer: Fl1pMoniz <fl1pmoniz@users.noreply.github.com>
 pkgname=rofi-universal
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Unified search mode for Rofi inspired by KRunner and Spotlight"
 arch=('x86_64' 'aarch64')
@@ -9,18 +9,17 @@ license=('MIT')
 depends=('rofi' 'glib2' 'bash' 'json-glib')
 makedepends=('meson' 'ninja' 'gcc' 'pkgconf' 'cairo')
 optdepends=(
-  'qalculate: calculations, units and currency'
   'fd: asynchronous file search'
   'cliphist: clipboard history'
   'wl-clipboard: Wayland clipboard support'
   'xclip: X11 clipboard support'
   'jq: Chromium bookmark parsing'
   'sqlite: Firefox and Zen bookmark parsing'
-  'curl: inline weather'
-  'wget: inline weather fallback'
+  'curl: inline currency and weather'
+  'wget: inline currency and weather fallback'
 )
 source=("$pkgname-$pkgver.tar::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar")
-sha256sums=('007758c2bf268f5d098ce5ac89a4afb66346c55b4dfc90b7216c69609352c34c')
+sha256sums=('8deedf236381c81338fc065d301274f978fec5fc20a26d7e3cc5f951abd99c55')
 
 build() {
   cd "$pkgname-$pkgver"

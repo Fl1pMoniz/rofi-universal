@@ -1,5 +1,5 @@
 Name:           rofi-universal
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
@@ -20,7 +20,6 @@ BuildRequires:  pkgconfig(json-glib-1.0) >= 1.6
 
 Requires:       rofi
 Requires:       json-glib
-Recommends:     qalculate
 Recommends:     fd-find
 Recommends:     cliphist
 Recommends:     wl-clipboard
@@ -30,9 +29,10 @@ Recommends:     curl
 Recommends:     wget
 
 %description
-rofi-universal is a native Rofi mode that combines applications, calculations,
-currency and unit conversions, web search, files, clipboard history, bookmarks,
-dictionary lookups, GitHub search and weather in one live search field.
+rofi-universal is a native Rofi mode that combines applications, native
+calculations, currency conversion, web search, files, clipboard history,
+bookmarks, dictionary lookups, GitHub search and weather in one live search
+field.
 It is inspired by KDE KRunner and macOS Spotlight, uses ordinary command-line
 tools, and does not require a background daemon or an AI service.
 
@@ -57,6 +57,11 @@ tools, and does not require a background daemon or an AI service.
 %{_datadir}/rofi-universal/config.example.ini
 
 %changelog
+* Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 1.1.0-1
+- Update to rofi-universal 1.1.0.
+- Replace the external calculator with a native evaluator and Frankfurter
+  currency conversion.
+
 * Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 1.0.0-1
 - rofi-universal 1.0.0 stable release.
 

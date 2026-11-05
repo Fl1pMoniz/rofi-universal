@@ -2,20 +2,16 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <string.h>
 #include <unistd.h>
 
 static void test_calculable(void) {
   g_assert_true(u_query_looks_calculable("25 * 18"));
-  g_assert_true(u_query_looks_calculable("500 EUR to USD"));
-  g_assert_true(u_query_looks_calculable("10 km to miles"));
   g_assert_true(u_query_looks_calculable("sqrt(16)"));
-  g_assert_true(u_query_looks_calculable("50%"));
   g_assert_true(u_query_looks_calculable("2^10"));
   g_assert_true(u_query_looks_calculable("1/2"));
-  g_assert_true(u_query_looks_calculable("150 to hex"));
-  g_assert_true(u_query_looks_calculable("10 in binary"));
+  g_assert_true(u_query_looks_calculable("25%"));
   g_assert_true(u_query_looks_calculable("25% of 180"));
-  g_assert_true(u_query_looks_calculable("0xff to decimal"));
   g_assert_true(u_query_looks_calculable("0xff"));
   g_assert_true(u_query_looks_calculable("0b1010"));
   g_assert_true(u_query_looks_calculable("0o755"));
@@ -26,6 +22,10 @@ static void test_calculable(void) {
   g_assert_false(u_query_looks_calculable("2 monitors"));
   g_assert_false(u_query_looks_calculable("hyprland 2 monitor"));
   g_assert_false(u_query_looks_calculable("application version 2.1"));
+  g_assert_false(u_query_looks_calculable("10 km to miles"));
+  g_assert_false(u_query_looks_calculable("150 to hex"));
+  g_assert_false(u_query_looks_calculable("10 in binary"));
+  g_assert_false(u_query_looks_calculable("0xff to decimal"));
 }
 
 
@@ -50,11 +50,12 @@ static void test_analysis(void) {
   u_analyze_query("hyprland 2 monitor", &analysis);
   g_assert_cmpint(analysis.calc_score, <, 600);
 
-  u_analyze_query("500 EUR to USD", &analysis);
-  g_assert_cmpint(analysis.calc_score, >=, 600);
+  u_analyze_query("300 eur to USD", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.web_score, >=, 600);
 
   u_analyze_query("10 km to miles", &analysis);
-  g_assert_cmpint(analysis.calc_score, >=, 600);
+  g_assert_cmpint(analysis.calc_score, <, 600);
 
   u_analyze_query("define ephemeral", &analysis);
   g_assert_cmpint(analysis.dictionary_score, >=, 600);
@@ -221,8 +222,9 @@ static void test_intent(void) {
   gboolean path = FALSE;
   g_assert_cmpint(u_classify_intent("25 * 18", &calc, &path), ==, U_INTENT_CALC);
   g_assert_true(calc);
-  g_assert_cmpint(u_classify_intent("500 EUR to USD", &calc, &path), ==,
-                  U_INTENT_CALC);
+  g_assert_cmpint(u_classify_intent("300 eur to USD", &calc, &path), ==,
+                  U_INTENT_WEB);
+  g_assert_false(calc);
   g_assert_cmpint(u_classify_intent("firefox", &calc, &path), ==, U_INTENT_APP);
   g_assert_cmpint(u_classify_intent("define ephemeral", &calc, &path), ==,
                   U_INTENT_DICTIONARY);
@@ -517,6 +519,33 @@ static void test_file_actions(void) {
   g_free(parent);
 }
 
+static void test_status_message(void) {
+  char *message = u_status_message(2, FALSE, FALSE, "fetching exchange rate");
+  g_assert_nonnull(strstr(message, "2 results"));
+  g_assert_nonnull(strstr(message, "fetching exchange rate"));
+  g_free(message);
+
+  message = u_status_message(0, FALSE, FALSE, "currency rate unavailable");
+  g_assert_nonnull(strstr(message, "0 results"));
+  g_assert_nonnull(strstr(message, "currency rate unavailable"));
+  g_free(message);
+
+  message = u_status_message(0, TRUE, FALSE, "fetching exchange rate");
+  g_assert_nonnull(strstr(message, "Type to search"));
+  g_assert_null(strstr(message, "fetching exchange rate"));
+  g_free(message);
+
+  message = u_status_message(1, FALSE, TRUE, "refresh failed; using cached rate");
+  g_assert_nonnull(strstr(message, "Alt+1"));
+  g_assert_nonnull(strstr(message, "refresh failed; using cached rate"));
+  g_free(message);
+
+  message = u_status_message(1, FALSE, FALSE, NULL);
+  g_assert_nonnull(strstr(message, "1 results"));
+  g_assert_null(strstr(message, "fetching exchange rate"));
+  g_free(message);
+}
+
 static void test_config(void) {
   UConfig config;
   u_config_init(&config);
@@ -530,6 +559,8 @@ static void test_config(void) {
   g_assert_cmpint(config.weather_timeout_seconds, ==, 4);
   g_assert_cmpint(config.dictionary_cache_seconds, ==, 86400);
   g_assert_cmpint(config.dictionary_timeout_seconds, ==, 4);
+  g_assert_cmpint(config.currency_cache_seconds, ==, 21600);
+  g_assert_cmpint(config.currency_timeout_seconds, ==, 4);
   u_config_clear(&config);
 
   char *path = NULL;
@@ -544,7 +575,8 @@ static void test_config(void) {
       "[files]\nmax_depth=2\nroots=/tmp\n"
       "[clipboard]\nautomatic=true\ncache_seconds=5\nmax_results=3\n"
       "[weather]\nlocation=Porto\ncache_seconds=120\ntimeout_seconds=2\n"
-      "[dictionary]\ncache_seconds=3600\ntimeout_seconds=3\n";
+      "[dictionary]\ncache_seconds=3600\ntimeout_seconds=3\n"
+      "[currency]\ncache_seconds=7200\ntimeout_seconds=5\n";
   g_assert_true(g_file_set_contents(path, content, -1, &error));
   g_assert_no_error(error);
   u_config_init(&config);
@@ -564,6 +596,8 @@ static void test_config(void) {
   g_assert_cmpint(config.weather_timeout_seconds, ==, 2);
   g_assert_cmpint(config.dictionary_cache_seconds, ==, 3600);
   g_assert_cmpint(config.dictionary_timeout_seconds, ==, 3);
+  g_assert_cmpint(config.currency_cache_seconds, ==, 7200);
+  g_assert_cmpint(config.currency_timeout_seconds, ==, 5);
   u_config_clear(&config);
 
   content = "[weather]\ncache_seconds=1\ntimeout_seconds=99\n";
@@ -635,6 +669,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dictionary-query", test_dictionary_query);
   g_test_add_func("/core/presentation", test_presentation);
   g_test_add_func("/core/file-actions", test_file_actions);
+  g_test_add_func("/core/status-message", test_status_message);
   g_test_add_func("/core/config", test_config);
   return g_test_run();
 }
