@@ -32,10 +32,13 @@ jobs:
         run: |
           PREFIX=/tmp/ru-install XDG_CONFIG_HOME=/tmp/ru-config ./scripts/install.sh
           test -f /tmp/ru-install/bin/rofi-universal
+          test -f /tmp/ru-install/lib64/rofi/libuniversal.so || test -f /tmp/ru-install/lib/rofi/libuniversal.so
           test -f /tmp/ru-install/share/rofi-universal/config.example.ini
           test -f /tmp/ru-config/rofi-universal/config.ini
           PREFIX=/tmp/ru-install ./scripts/uninstall.sh
           test ! -e /tmp/ru-install/bin/rofi-universal
+          test ! -e /tmp/ru-install/lib64/rofi/libuniversal.so
+          test ! -e /tmp/ru-install/lib/rofi/libuniversal.so
           test ! -e /tmp/ru-install/share/rofi-universal/config.example.ini
           test -f /tmp/ru-config/rofi-universal/config.ini
 
