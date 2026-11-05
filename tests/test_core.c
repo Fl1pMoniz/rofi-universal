@@ -55,6 +55,9 @@ static void test_urls(void) {
   url = u_search_url("https://example.org/?q=%s", "a b");
   g_assert_cmpstr(url, ==, "https://example.org/?q=a%20b");
   g_free(url);
+  url = u_search_url("duckduckgo", "a&b?c");
+  g_assert_cmpstr(url, ==, "https://duckduckgo.com/?q=a%26b%3Fc");
+  g_free(url);
 }
 
 static void test_ranking(void) {
