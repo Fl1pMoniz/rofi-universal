@@ -297,24 +297,24 @@ static void test_ranking(void) {
 }
 
 static void test_dedup(void) {
+  UResult *low =
+      u_result_new(U_PROVIDER_WEATHER, "low", "d", "i", 100,
+                   U_ACTION_OPEN_URI, "https://example/weather", "low");
+  UResult *high =
+      u_result_new(U_PROVIDER_WEATHER, "high", "d", "i", 300,
+                   U_ACTION_OPEN_URI, "https://example/weather", "high");
+  UResult *web = u_result_new(U_PROVIDER_WEB, "web", "d", "i", 200,
+                              U_ACTION_OPEN_URI, "https://example/web", "web");
+  UResult *hint_a = u_result_new(U_PROVIDER_CALC, "hint-a", "d", "i", 100,
+                                 U_ACTION_NONE, NULL, NULL);
+  UResult *hint_b = u_result_new(U_PROVIDER_CALC, "hint-b", "d", "i", 200,
+                                 U_ACTION_NONE, NULL, NULL);
   GPtrArray *results = g_ptr_array_new();
-  g_ptr_array_add(results,
-                  u_result_new(U_PROVIDER_WEATHER, "low", "d", "i", 100,
-                               U_ACTION_OPEN_URI, "https://example/weather",
-                               "low"));
-  g_ptr_array_add(results,
-                  u_result_new(U_PROVIDER_WEATHER, "high", "d", "i", 300,
-                               U_ACTION_OPEN_URI, "https://example/weather",
-                               "high"));
-  g_ptr_array_add(results,
-                  u_result_new(U_PROVIDER_WEB, "web", "d", "i", 200,
-                               U_ACTION_OPEN_URI, "https://example/web", "web"));
-  g_ptr_array_add(results,
-                  u_result_new(U_PROVIDER_CALC, "hint-a", "d", "i", 100,
-                               U_ACTION_NONE, NULL, NULL));
-  g_ptr_array_add(results,
-                  u_result_new(U_PROVIDER_CALC, "hint-b", "d", "i", 200,
-                               U_ACTION_NONE, NULL, NULL));
+  g_ptr_array_add(results, low);
+  g_ptr_array_add(results, high);
+  g_ptr_array_add(results, web);
+  g_ptr_array_add(results, hint_a);
+  g_ptr_array_add(results, hint_b);
   u_results_dedup(results);
   g_assert_cmpuint(results->len, ==, 4);
   gboolean saw_high = FALSE;
@@ -327,10 +327,12 @@ static void test_dedup(void) {
     }
   }
   g_assert_true(saw_high);
-  for (guint i = 0; i < results->len; i++) {
-    u_result_free(g_ptr_array_index(results, i));
-  }
   g_ptr_array_free(results, TRUE);
+  u_result_free(low);
+  u_result_free(high);
+  u_result_free(web);
+  u_result_free(hint_a);
+  u_result_free(hint_b);
 }
 
 static void test_config(void) {
