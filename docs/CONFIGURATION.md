@@ -53,9 +53,11 @@ bookmarks=true
 
 Set any value to `false` to disable the provider.
 
-The clipboard provider is only queried when the input starts with `clip ` or
-`clipboard `. This avoids leaking clipboard contents into unrelated searches.
-It also respects the dedicated `clipboard=false` switch.
+By default the clipboard provider is only queried when the input starts with
+`clip ` or `clipboard `. Set `[clipboard] automatic=true` to include matching
+entries in normal searches at a deliberately low rank. This avoids leaking
+clipboard contents into unrelated searches. The provider also respects the
+dedicated `clipboard=false` switch.
 
 ## Files
 
@@ -90,26 +92,48 @@ matching is off by default because clipboard history can contain passwords or
 private text. The cliphist list is cached in memory for `cache_seconds` and is
 never written to a persistent cache by the launcher.
 
-## Ranking and intent detection
+## Weather
 
-Intent detection is intentionally small and predictable:
+```ini
+[weather]
+location=
+cache_seconds=600
+timeout_seconds=4
+```
+
+`weather in <city>` asks wttr.in for a compact summary and displays it directly in
+Rofi when `curl` or `wget` is available. The request runs asynchronously with
+`timeout_seconds` and is cancelled when the query changes. A detailed forecast
+action remains available, and is the fallback when inline retrieval fails.
+
+`location` is used only for a bare `weather` query. If it is empty, use
+`weather in <city>`; the plugin does not silently guess a location from the
+network address. `cache_seconds` controls the in-memory cache. No weather data is
+written to disk by the plugin.
+
+## Ranking and query signals
+
+Query analysis is intentionally small and predictable:
 
 - URLs, leading `!` bangs and `github`/`gh` prefixes are recognized as web/GitHub
-  intents.
-- `define`, `weather`, `clip` and path queries have dedicated intents.
-- Queries containing digits or math functions go to the calculator.
-- A single word with no special form is treated as an application query.
-- Other multi-word queries are web queries.
+  signals.
+- `define`, `weather`, `clip` and path queries have dedicated signals.
+- Calculator signals require arithmetic, percentage, unit, currency or base
+  conversion patterns; a bare number inside a name such as `python3` or
+  `firefox 123` is not a calculation.
+- A single word with no special form gets a strong application signal.
+- Multi-word natural-language queries get a web signal; words such as `features`,
+  `configuration`, `guide`, `documentation`, `install` and `error` strengthen it.
 
 Each provider receives an independent relevance signal. A query can be relevant
 to applications, files, calculations, web search and clipboard at the same time;
 there is no single intent that suppresses the others. Providers score matches by
-exact title, prefix, keyword, executable and token matches. Ranking combines the
+exact title, prefix, keyword, executable and token matches. Ranking combines
 provider relevance, match quality and a small local-action preference.
 
-Local results render immediately. qalc, fd, clipboard refresh and bookmark
-loading run asynchronously. A new query cancels obsolete work, and callbacks from
-older query generations are ignored.
+Local results render immediately. qalc, fd, clipboard refresh, bookmark loading
+and inline weather retrieval run asynchronously. A new query cancels obsolete
+work, and callbacks from older query generations are ignored.
 
 ## Rofi theme
 

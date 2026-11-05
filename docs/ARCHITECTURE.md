@@ -8,6 +8,7 @@ src/
   plugin.c       Rofi mode callbacks, provider implementations and actions
   query.c        Query analysis, provider relevance and scoring signals
   process.c      Cancellable async subprocess capture
+  weather.c      Weather location, URL and response parsing
   universal.c    Result model, URL building and INI configuration
   universal.h    Shared interfaces
 ```
@@ -21,7 +22,9 @@ multiple providers at once. The analysis also exposes convenience fields such as
 avoid duplicate shortcut results.
 
 `src/query.c` contains deterministic rules only. There is no AI model, token
-budget or network call in classification.
+budget or network call in classification. Natural-language queries containing
+words such as `features`, `configuration`, `guide` or `documentation` receive a
+stronger web signal without suppressing application or file matches.
 
 ## Ranking
 
@@ -29,6 +32,7 @@ Each provider creates `UResult` objects with a base match score. `plugin.c` adds
 
 - provider relevance from the query analysis,
 - a small local-action bonus for applications, calculations, files and clipboard.
+- a higher score for inline weather summaries than the external forecast action.
 
 `u_score_signals()` and `u_provider_relevance()` are testable in `test_core.c`.
 Sorting is deterministic: score, provider, then title.
@@ -45,10 +49,18 @@ The plugin keeps:
 - a `query_cancellable` replaced on every query change,
 - a `query_generation` counter.
 
-Query-specific callbacks (calculator and file search) are applied only when their
-generation still matches the current query. Old callbacks are ignored after
-cancellation. Bookmark and clipboard results are not query-specific; when they
-arrive they rebuild local results and merge with any current async results.
+Query-specific callbacks (calculator, file search and inline weather) are applied
+only when their generation still matches the current query. Old callbacks are
+ignored after cancellation. Bookmark and clipboard results are not query-specific;
+when they arrive they rebuild local results and merge with any current async
+results.
+
+Inline weather uses a dedicated `WeatherJob` (mode pointer, query generation and
+city). The request is a `curl` or `wget` subprocess with a bounded timeout. Parsed
+summaries are cached in memory for `[weather] cache_seconds`, failed cities back
+off briefly, and stale-generation results may be cached but are never inserted
+into the current result list. If curl/wget or the network is unavailable, the
+external wttr.in action remains.
 
 On plugin destruction, all jobs have their mode pointer cleared, cancellables are
 cancelled, and result/cache arrays are released. Late callbacks free their job
@@ -57,7 +69,8 @@ without touching the destroyed mode.
 ## Result ownership
 
 - `local_results` owns synchronously generated results.
-- `async_results` owns results produced by calculator and file search.
+- `async_results` owns results produced by calculator, file search and inline
+  weather.
 - `results` is a borrowed pointer array used by Rofi for display and action.
 
 `merge_results()` rebuilds the borrowed array from the two owner arrays, sorts it

@@ -23,10 +23,13 @@ sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
 Build and test:
 
 ```sh
-meson setup build
+meson setup build --buildtype=release -Dwerror=true
 meson compile -C build
 meson test -C build --print-errorlogs
 ```
+
+Packaging files are under `packaging/`. The Fedora RPM is built in CI; the
+PKGBUILD is provided for Arch users and is not built in this repository's CI.
 
 Run from the build tree:
 
@@ -43,7 +46,7 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Missing optional dependencies must degrade gracefully.
 - Add or update tests in `tests/test_core.c` for query analysis, ranking,
   configuration or URL changes. Add process tests in `tests/test_process.c` for
-  async behavior.
+  async behavior and weather parsing tests in `tests/test_weather.c`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration
@@ -55,12 +58,14 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 
 1. Add a provider enum and icon/name mapping in `src/universal.h` and
    `src/universal.c` if necessary.
-2. Add intent detection and a ranking boost in `src/universal.c`.
-3. Add a provider function and call it from `rebuild_results()` in
+2. Add independent query signals and relevance in `src/query.c`.
+3. Add a provider function and call it from `rebuild_local_results()` in
    `src/plugin.c`.
 4. Use `UResult` actions instead of shell command strings. Do not introduce
    shell interpolation of user input.
-5. Add a test and document the provider in `README.md`,
+5. Use `u_process_run()` for asynchronous work and reject stale query
+   generations.
+6. Add a test and document the provider in `README.md`,
    `docs/CONFIGURATION.md`, and the example configuration.
 
 ## Licensing

@@ -3,6 +3,38 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.3.0] - 2026-11-05
+
+### Added
+
+- Inline weather summaries for `weather in <city>` using wttr.in's documented
+  text format. Requests run asynchronously with a configurable timeout, are
+  cancelled on query changes, and are cached in memory.
+- `[weather] location`, `cache_seconds` and `timeout_seconds` configuration.
+- External detailed-forecast fallback when inline weather is unavailable.
+- RPM spec and Arch Linux PKGBUILD under `packaging/`, plus packaging notes.
+- Weather unit tests using fixtures, with no live network dependency.
+- CI coverage for Fedora 42 and 44 with `-Dwerror=true`, Clang, GCC
+  `-fanalyzer`, ASan/UBSan and RPM build validation.
+
+### Changed
+
+- Web relevance now increases for natural-language queries containing terms such
+  as `features`, `configuration`, `guide`, `documentation`, `install` or `error`.
+- A bare `weather` query no longer silently assumes an IP-based location. Set
+  `[weather] location` or include a city in the query.
+- Weather results now show an inline summary and a separate external forecast
+  action instead of only opening wttr.in.
+- Expanded query regression tests for `python 3.14 features`, `25% of 180`,
+  `weather in Lisbon`, `github hyprwhispr`, `steam` and `report.pdf`.
+
+### Fixed
+
+- Corrected configuration documentation that still described digits as an
+  exclusive calculator trigger.
+- Weather retrieval never blocks the Rofi UI and is cancelled when the query
+  changes.
+
 ## [0.2.0] - 2026-11-05
 
 ### Changed

@@ -33,8 +33,11 @@ Include:
   configuration file as trusted local input. Asynchronous subprocesses are
   cancellable, and their callbacks are ignored when their query generation is
   stale or the plugin has been destroyed.
-- **Network access** is limited to qalc exchange-rate updates and to opening web
-  actions chosen by the user. The launcher does not send queries to an AI service.
+- **Network access** is limited to qalc exchange-rate updates, optional inline
+  weather retrieval, and opening web actions chosen by the user. Inline weather
+  sends the requested city to wttr.in through `curl` or `wget`; it is not used
+  for queries without a weather signal. Weather summaries are cached only in
+  memory. The launcher does not send queries to an AI service.
 - **Desktop files and bookmarks** are local data. A malicious desktop entry can
   still launch a malicious command when selected; the launcher does not execute
   desktop entries without a user action.

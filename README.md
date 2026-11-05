@@ -29,7 +29,10 @@ type, and you do not need to switch modes or remember a prefix for normal use.
   never written to disk by the launcher.
 - **Dictionary** shortcuts for `define <word>`.
 - **GitHub** search for `github <query>` or `gh <query>`.
-- **Weather** shortcuts for `weather in <city>` via wttr.in.
+- **Weather** for `weather in <city>`: an inline summary when `curl` or `wget`
+  can reach wttr.in, plus an external detailed-forecast fallback. Results are
+  cached in memory. A bare `weather` query uses `[weather] location` if set and
+  never silently assumes an IP-based location.
 - **Bookmarks** from Chromium-family JSON stores and Firefox/Zen SQLite stores
   when `jq` and `sqlite3` are available, loaded in the background.
 - **Keyboard-first**: `Enter` runs the selected result; `Shift+Enter` copies its
@@ -46,12 +49,16 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ![Animated demo: applications, calculator, currency, units, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
 
+The demo was recorded against v0.2.0. v0.3 keeps the same interaction and result
+presentation; the weather query now also shows an inline summary when network
+access and `curl` or `wget` are available.
+
 ## Requirements
 
 ### Required
 
 - Rofi **1.7.6+** with plugin support (tested with Rofi **2.0.0** on Fedora/Nobara
-  and Hyprland/Wayland; CI builds against Fedora 42's Rofi package)
+  and Hyprland/Wayland; CI builds against the Fedora 42 and 44 Rofi packages)
 - GLib/GIO development headers, a C compiler, Meson and Ninja
 - `qalc` from [Qalculate!](https://qalculate.github.io/) for calculations,
   units and currency conversion
@@ -63,6 +70,7 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 | Files | `fd` (recommended), `timeout` |
 | Clipboard | `cliphist`, `wl-clipboard` (Wayland) or `xclip`/`xsel` (X11) |
 | Bookmarks | `jq` for Chromium-family, `sqlite3` for Firefox/Zen |
+| Inline weather | `curl` or `wget`; network access to wttr.in |
 | URL/file opening | `xdg-open` or the desktop's default URL handler |
 | Web search | a browser registered as the default URL handler |
 
@@ -74,7 +82,7 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
   glib2-devel cairo-devel qalculate
 # Optional:
-sudo dnf install fd-find cliphist wl-clipboard jq sqlite
+sudo dnf install fd-find cliphist wl-clipboard jq sqlite curl
 ```
 
 ### Arch Linux
@@ -82,7 +90,7 @@ sudo dnf install fd-find cliphist wl-clipboard jq sqlite
 ```sh
 sudo pacman -S --needed rofi meson ninja gcc pkgconf glib2 cairo qalculate
 # Optional:
-sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite
+sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite curl
 ```
 
 ### Debian / Ubuntu
@@ -91,8 +99,30 @@ sudo pacman -S --needed fd cliphist wl-clipboard jq sqlite
 sudo apt install rofi rofi-dev meson ninja-build build-essential pkg-config \
   libglib2.0-dev libcairo2-dev qalc
 # Optional:
-sudo apt install fd-find cliphist wl-clipboard jq sqlite3
+sudo apt install fd-find cliphist wl-clipboard jq sqlite3 curl
 ```
+
+### Fedora / Nobara package
+
+An RPM spec is provided in `packaging/rofi-universal.spec` and is built in CI.
+It is not currently published in the Fedora or Nobara repositories:
+
+```sh
+sudo dnf builddep packaging/rofi-universal.spec
+rpmbuild -ba packaging/rofi-universal.spec
+```
+
+### Arch Linux package
+
+A PKGBUILD is provided in `packaging/PKGBUILD`:
+
+```sh
+cd packaging
+makepkg -si
+```
+
+The PKGBUILD is not built on Arch in this repository's CI; see
+[packaging/README.md](packaging/README.md) for the validation status.
 
 ### Build and install
 
@@ -186,6 +216,11 @@ max_results=8
 automatic=false
 cache_seconds=30
 max_results=10
+
+[weather]
+location=
+cache_seconds=600
+timeout_seconds=4
 ```
 
 `web_engine` accepts `duckduckgo`, `google`, `brave`, `bing`, `startpage`,
@@ -211,14 +246,19 @@ and are not queried.
 | Query | Result |
 | --- | --- |
 | `25 * 18` | Calculator result |
+| `25% of 180` | Percentage calculation |
 | `500 EUR to USD` | Currency conversion |
 | `10 km to miles` | Unit conversion |
 | `firefox` | Application (when installed) |
+| `firefox 123` | Web search, without a false calculator result |
+| `python 3.14 features` | Web search, not a calculation |
+| `report.pdf` | Local file search and direct path when it exists |
+| `steam` | Installed application ranked highly |
 | `zen` / `kitty` | Application match, with files below |
 | `~/Downloads/report.pdf` | Direct file or directory open |
 | `define ephemeral` | Dictionary links |
 | `github hyprwhispr` | GitHub repository search |
-| `weather in Tokyo` | Weather shortcut |
+| `weather in Tokyo` | Inline weather when available, plus an external forecast action |
 | `hyprland configuration` | Web search |
 | `!yt linux customization` | YouTube search |
 | `clip github` | Search clipboard history |
@@ -237,11 +277,13 @@ src/
   plugin.c       Rofi callbacks, providers, actions and result merging
   query.c        Query analysis, provider relevance and scoring signals
   process.c      Cancellable asynchronous subprocess capture
+  weather.c      Weather location, URL and response parsing
   universal.c    Result model, URL building and configuration
   universal.h    Shared interfaces
 tests/
   test_core.c    Query, ranking, URL and configuration tests
   test_process.c Async process success, cancellation and failure tests
+  test_weather.c Weather location, URL and response parsing tests
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the provider and async
@@ -258,14 +300,16 @@ combines match quality, provider relevance and a local-action bonus:
 4. Results are sorted deterministically by score, provider and title.
 
 Async work uses a query-generation counter and a per-query `GCancellable`.
-Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh
-and bookmark loading run through `src/process.c`; obsolete processes are cancelled
-and callbacks for older generations are ignored. Bookmark and clipboard data are
-held only in memory for the plugin's lifetime.
+Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh,
+bookmark loading and inline weather retrieval run through `src/process.c`; obsolete
+processes are cancelled and callbacks for older generations are ignored. Bookmark,
+clipboard and weather data are held only in memory for the plugin's lifetime.
 
 No prompt is sent to an AI model. No daemon runs in the background. Network access
-only happens when `qalc` refreshes exchange rates or when the user chooses a web
-action. Bookmark stores are read locally.
+only happens when `qalc` refreshes exchange rates, when a weather query requests an
+inline summary, or when the user chooses a web action. Bookmark stores are read
+locally. Inline weather requires `curl` or `wget` and sends the requested city to
+wttr.in; if retrieval fails, the external forecast action still works.
 
 ## Extending
 
@@ -277,7 +321,8 @@ live in `src/query.c`; reusable process execution lives in `src/process.c`.
 2. Add a `U_PROVIDER_*` value in `src/universal.h` if needed.
 3. Add provider relevance in `src/query.c`.
 4. Use `u_process_run()` for subprocess work; never block the UI.
-5. Add a test in `tests/test_core.c` or `tests/test_process.c`.
+5. Add a test in `tests/test_core.c`, `tests/test_process.c` or
+   `tests/test_weather.c`.
 6. Run `meson test -C build` and an interactive smoke test.
 
 Please keep new providers local-first and dependency-tolerant. A missing tool
@@ -292,9 +337,9 @@ meson test -C build --print-errorlogs
 ```
 
 The core tests check query analysis, URL encoding, provider relevance, ranking,
-configuration and invalid input. The process tests check asynchronous success,
-cancellation and spawn failures without network access. An interactive smoke test
-can be run on Wayland:
+configuration and invalid input. The weather tests use fixtures and do not require
+network access. The process tests check asynchronous success, cancellation and
+spawn failures. An interactive smoke test can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -325,6 +370,12 @@ searches. Automatic matching is off by default because clipboard history may
 contain sensitive data. Disable the provider entirely with
 `providers.clipboard=false`.
 
+**Weather is not shown inline**
+Install `curl` or `wget` and allow network access to `wttr.in`. The external
+forecast action remains available if inline retrieval fails. Set
+`[weather] location` to use a default city for a bare `weather` query; otherwise
+use `weather in <city>`.
+
 **Bookmarks are missing**
 Only Chromium-family JSON bookmarks and Firefox/Zen SQLite bookmarks are read.
 Install `jq` and/or `sqlite3`.
@@ -332,6 +383,17 @@ Install `jq` and/or `sqlite3`.
 **Theme looks wrong**
 Pass your Rofi config with `ROFI_UNIVERSAL_ROFI_CONFIG` or `-config`. The plugin
 does not ship a theme and preserves the look of your existing Rofi setup.
+
+## Known limitations
+
+- Inline weather depends on the public wttr.in service and an optional `curl` or
+  `wget` binary. It degrades to an external forecast link when unavailable.
+- Web search opens a browser action; it does not scrape search-engine result
+  pages or display live previews.
+- The RPM spec is built and tested in CI. The PKGBUILD is provided for Arch users
+  but is not built on Arch in this repository's CI.
+- Rofi plugin ABI compatibility is bounded by the Rofi version used to build the
+  plugin. Rebuild after a Rofi major upgrade.
 
 ## License
 
