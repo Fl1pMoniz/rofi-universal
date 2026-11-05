@@ -11,6 +11,95 @@ static gboolean matches(const char *pattern, const char *text) {
   return g_regex_match_simple(pattern, text, G_REGEX_CASELESS, 0);
 }
 
+int u_match_score_folded(const char *haystack, const char *title,
+                         const char *query) {
+  if (!query || !*query) {
+    return 0;
+  }
+  int score = 0;
+  if (title && g_strcmp0(title, query) == 0) {
+    score = 1000;
+  } else if (title && g_str_has_prefix(title, query)) {
+    score = 850;
+  } else if (haystack && g_str_has_prefix(haystack, query)) {
+    score = 750;
+  } else if (title && strstr(title, query)) {
+    score = 700;
+  } else if (haystack && strstr(haystack, query)) {
+    score = 550;
+  }
+  if (score == 0 && haystack) {
+    char **tokens = g_strsplit_set(query, " \t", -1);
+    int total = 0;
+    int matched = 0;
+    for (int i = 0; tokens[i]; i++) {
+      if (!*tokens[i]) {
+        continue;
+      }
+      total++;
+      if (strstr(haystack, tokens[i])) {
+        matched++;
+      }
+    }
+    if (total > 0 && matched == total) {
+      score = 300 + total * 30;
+    }
+    g_strfreev(tokens);
+  }
+  return score;
+}
+
+static int prefix_extra_score(const char *field, const char *query, int weight) {
+  if (!field || !*field || !query || !*query) {
+    return 0;
+  }
+  size_t length = strlen(field);
+  if (length < 3) {
+    return 0;
+  }
+  if (strncmp(query, field, length) == 0 && query[length] == ' ') {
+    return weight;
+  }
+  return 0;
+}
+
+int u_app_match_score(const char *name, const char *executable,
+                      const char *keywords, const char *terms,
+                      const char *query) {
+  int score = 0;
+  score = MAX(score, u_match_score_folded(name, name, query));
+  score = MAX(score, u_match_score_folded(executable, executable, query));
+  score = MAX(score, u_match_score_folded(keywords, keywords, query));
+  score = MAX(score, u_match_score_folded(terms, name, query) * 3 / 4);
+  score = MAX(score, prefix_extra_score(name, query, 500));
+  score = MAX(score, prefix_extra_score(executable, query, 400));
+  score = MAX(score, prefix_extra_score(terms, query, 400));
+  return score;
+}
+
+int u_file_match_score(const char *path, const char *query) {
+  if (!path || !*path || !query || !*query) {
+    return 0;
+  }
+  char *folded_query = g_utf8_casefold(query, -1);
+  char *folded_path = g_utf8_casefold(path, -1);
+  char *base = g_path_get_basename(path);
+  char *folded_base = g_utf8_casefold(base, -1);
+  int score = u_match_score_folded(folded_path, folded_base, folded_query);
+  if (score == 0) {
+    score = 400;
+  }
+  g_free(folded_query);
+  g_free(folded_path);
+  g_free(folded_base);
+  g_free(base);
+  return score;
+}
+
+gboolean u_query_has_glob(const char *query) {
+  return query && strpbrk(query, "*?[") != NULL;
+}
+
 int u_intent_boost(UIntent intent, UProvider provider) {
   UQueryAnalysis analysis;
   memset(&analysis, 0, sizeof(analysis));
@@ -142,7 +231,8 @@ static gboolean looks_like_web_intent(const char *folded) {
   const char *words[] = {"how to", "guide", "documentation", "docs",
                          "features", "configuration", "config", "tutorial",
                          "install", "setup", "troubleshoot", "error", "fix",
-                         NULL};
+                         "examples", "alternatives", "comparison", "review",
+                         "reference", "manual", "download", "api", NULL};
   for (int i = 0; words[i]; i++) {
     if (strstr(folded, words[i])) {
       return TRUE;

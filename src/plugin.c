@@ -100,47 +100,11 @@ static char *fold_string(const char *text) {
 
 static void append_term(GString *terms, const char *text) {
   if (text && *text) {
-    g_string_append_c(terms, ' ');
+    if (terms->len > 0) {
+      g_string_append_c(terms, ' ');
+    }
     g_string_append(terms, text);
   }
-}
-
-static int match_score_folded(const char *haystack, const char *title,
-                              const char *query) {
-  if (!query || !*query) {
-    return 0;
-  }
-  int score = 0;
-  if (title && g_strcmp0(title, query) == 0) {
-    score = 1000;
-  } else if (title && g_str_has_prefix(title, query)) {
-    score = 850;
-  } else if (haystack && g_str_has_prefix(haystack, query)) {
-    score = 750;
-  } else if (title && strstr(title, query)) {
-    score = 700;
-  } else if (haystack && strstr(haystack, query)) {
-    score = 550;
-  }
-  if (score == 0 && haystack) {
-    char **tokens = g_strsplit_set(query, " \t", -1);
-    int total = 0;
-    int matched = 0;
-    for (int i = 0; tokens[i]; i++) {
-      if (!*tokens[i]) {
-        continue;
-      }
-      total++;
-      if (strstr(haystack, tokens[i])) {
-        matched++;
-      }
-    }
-    if (total > 0 && matched == total) {
-      score = 300 + total * 30;
-    }
-    g_strfreev(tokens);
-  }
-  return score;
 }
 
 static gboolean provider_is_local(UProvider provider) {
@@ -232,6 +196,7 @@ static void load_apps(UMode *mode) {
     const char *command = g_app_info_get_commandline(info);
     GString *terms = g_string_new(NULL);
     append_term(terms, name);
+    append_term(terms, id);
     append_term(terms, description);
     append_term(terms, generic);
     append_term(terms, keywords);
@@ -429,21 +394,9 @@ static void add_apps(UMode *mode, const char *folded_query) {
   }
   for (guint i = 0; i < mode->apps->len; i++) {
     UApp *app = g_ptr_array_index(mode->apps, i);
-    int score = match_score_folded(app->folded_name, app->folded_name,
-                                   folded_query);
-    if (score == 0) {
-      score = match_score_folded(app->folded_executable,
-                                 app->folded_executable, folded_query);
-    }
-    if (score == 0) {
-      score =
-          match_score_folded(app->folded_keywords, app->folded_keywords,
-                             folded_query);
-    }
-    if (score == 0) {
-      score = match_score_folded(app->folded_terms, app->folded_name,
-                                 folded_query);
-    }
+    int score = u_app_match_score(
+        app->folded_name, app->folded_executable, app->folded_keywords,
+        app->folded_terms, folded_query);
     if (score > 0) {
       add_app_result(mode, app, score);
     }
@@ -505,6 +458,17 @@ static void add_web(UMode *mode, const char *query, const char *folded_query) {
         engine = "dictionary";
       } else if (g_ascii_strcasecmp(bang, "wiktionary") == 0) {
         engine = "wiktionary";
+      } else if (g_ascii_strcasecmp(bang, "arch") == 0 ||
+                 g_ascii_strcasecmp(bang, "archwiki") == 0) {
+        engine = "arch";
+      } else if (g_ascii_strcasecmp(bang, "man") == 0) {
+        engine = "man";
+      } else if (g_ascii_strcasecmp(bang, "docs") == 0 ||
+                 g_ascii_strcasecmp(bang, "devdocs") == 0) {
+        engine = "docs";
+      } else if (g_ascii_strcasecmp(bang, "pkg") == 0 ||
+                 g_ascii_strcasecmp(bang, "packages") == 0) {
+        engine = "pkg";
       }
       memmove(text, space + 1, strlen(space + 1) + 1);
     }
@@ -536,6 +500,14 @@ static void add_web(UMode *mode, const char *query, const char *folded_query) {
       label = "OpenStreetMap";
     } else if (strstr(template, "wiktionary.org")) {
       label = "Wiktionary";
+    } else if (strstr(template, "wiki.archlinux.org")) {
+      label = "Arch Wiki";
+    } else if (strstr(template, "man.archlinux.org")) {
+      label = "Arch man pages";
+    } else if (strstr(template, "devdocs.io")) {
+      label = "DevDocs";
+    } else if (strstr(template, "archlinux.org/packages")) {
+      label = "Arch packages";
     } else {
       label = "Web";
     }
@@ -611,13 +583,47 @@ static void add_github(UMode *mode, const char *query,
   if (!term || !*term) {
     return;
   }
-  char *url = u_search_url("github", term);
-  char *title = g_strdup_printf("Search GitHub for %s", term);
+  char *search = g_strdup(term);
+  g_strstrip(search);
+  if (!*search) {
+    g_free(search);
+    return;
+  }
+
+  char *repo_url = u_github_repo_url(search);
+  if (repo_url) {
+    char *title = g_strdup_printf("Open GitHub repository %s", search);
+    add_result(mode, u_result_new(U_PROVIDER_GITHUB, title,
+                                  "GitHub · repository", "applications-internet",
+                                  700, U_ACTION_OPEN_URI, repo_url, repo_url));
+    g_free(title);
+  }
+
+  char *url = u_github_search_url(search, "repositories");
+  char *title = g_strdup_printf("Search GitHub repositories for %s", search);
   add_result(mode, u_result_new(U_PROVIDER_GITHUB, title,
                                 "GitHub · repositories", "applications-internet",
-                                500, U_ACTION_OPEN_URI, url, url));
+                                550, U_ACTION_OPEN_URI, url, url));
   g_free(title);
   g_free(url);
+
+  url = u_github_search_url(search, "users");
+  title = g_strdup_printf("Search GitHub users for %s", search);
+  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title, "GitHub · users",
+                                "system-users", 450, U_ACTION_OPEN_URI, url,
+                                url));
+  g_free(title);
+  g_free(url);
+
+  url = u_github_search_url(search, "issues");
+  title = g_strdup_printf("Search GitHub issues for %s", search);
+  add_result(mode, u_result_new(U_PROVIDER_GITHUB, title, "GitHub · issues",
+                                "dialog-information", 400, U_ACTION_OPEN_URI,
+                                url, url));
+  g_free(title);
+  g_free(url);
+  g_free(repo_url);
+  g_free(search);
 }
 
 static void weather_finished(const char *stdout_text,
@@ -642,7 +648,7 @@ static void weather_finished(const char *stdout_text,
         char *url = u_weather_forecast_url(job->city);
         add_async_result(mode,
                          u_result_new(U_PROVIDER_WEATHER, summary,
-                                      "Weather · wttr.in", "weather-clear", 700,
+                                      "Weather · forecast", "weather-clear", 700,
                                       U_ACTION_OPEN_URI, url, summary));
         g_free(url);
         merge_results(mode);
@@ -731,7 +737,7 @@ static void add_weather(UMode *mode, const char *query,
       &mode->weather_cache, city, g_get_monotonic_time(), &fresh);
   if (summary && fresh) {
     add_result(mode, u_result_new(U_PROVIDER_WEATHER, summary,
-                                  "Weather · wttr.in", "weather-clear", 700,
+                                  "Weather · forecast", "weather-clear", 700,
                                   U_ACTION_OPEN_URI, forecast, summary));
   } else {
     start_weather(mode, city);
@@ -763,8 +769,8 @@ static void add_bookmarks(UMode *mode, const char *folded_query) {
   }
   for (guint i = 0; i < mode->bookmarks->len; i++) {
     UBookmark *bookmark = g_ptr_array_index(mode->bookmarks, i);
-    int score = match_score_folded(bookmark->folded_terms, bookmark->folded_terms,
-                                   folded_query);
+    int score = u_match_score_folded(bookmark->folded_terms,
+                                     bookmark->folded_terms, folded_query);
     if (score > 0) {
       add_result(mode, u_result_new(U_PROVIDER_BOOKMARKS, bookmark->title,
                                     "Bookmark", "user-bookmarks", score,
@@ -878,7 +884,8 @@ static void add_clipboard(UMode *mode, const char *query,
        added < mode->config.clipboard_max_results;
        i++) {
     UClipboardEntry *entry = g_ptr_array_index(mode->clipboard_entries, i);
-    int score = match_score_folded(entry->folded, entry->folded, search_folded);
+    int score = u_match_score_folded(entry->folded, entry->folded,
+                                     search_folded);
     if (score == 0) {
       continue;
     }
@@ -938,6 +945,7 @@ static void merge_results(UMode *mode) {
   for (guint i = 0; i < mode->async_results->len; i++) {
     g_ptr_array_add(mode->results, g_ptr_array_index(mode->async_results, i));
   }
+  u_results_dedup(mode->results);
   g_ptr_array_sort(mode->results, u_result_compare);
   if (mode->results->len > (guint)mode->config.max_results) {
     g_ptr_array_set_size(mode->results, mode->config.max_results);
@@ -1033,7 +1041,8 @@ static void files_finished(const char *stdout_text, const char *stderr_text,
       char *description = g_strdup_printf("File · %s", parent);
       add_async_result(mode,
                        u_result_new(U_PROVIDER_FILES, base, description,
-                                    is_dir ? "folder" : "text-x-generic", 500,
+                                    is_dir ? "folder" : "text-x-generic",
+                                    u_file_match_score(path, mode->query),
                                     U_ACTION_OPEN_PATH, path, path));
       g_free(description);
       g_free(parent);
@@ -1065,7 +1074,8 @@ static void start_files(UMode *mode) {
   g_ptr_array_add(args, (gpointer)fd);
   g_ptr_array_add(args, (gpointer)"--color=never");
   g_ptr_array_add(args, (gpointer)"--hidden");
-  g_ptr_array_add(args, (gpointer)"--fixed-strings");
+  g_ptr_array_add(args, (gpointer)(u_query_has_glob(mode->query) ? "--glob"
+                                                                 : "--fixed-strings"));
   char max_results[16];
   char max_depth[16];
   g_snprintf(max_results, sizeof(max_results), "%d",

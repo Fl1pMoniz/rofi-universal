@@ -13,22 +13,29 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ## Features
 
-- **Live combined results** from all enabled providers as you type.
+- **Live combined results** from all enabled providers as you type, with
+  duplicate results for the same provider and target collapsed.
 - **Independent provider relevance scoring** with simple, maintainable rules:
   intents are no longer exclusive, so one query can produce useful app, file,
   calculator, web and clipboard results at the same time.
-- **Applications** from the freedesktop desktop-entry database.
+- **Applications** from the freedesktop desktop-entry database, matching names,
+  generic names, keywords, desktop IDs and executables. A query may start with an
+  application name (`steam games`) without letting every catalogue entry outrank
+  the application itself.
 - **Calculator** through `qalc` from Qalculate!: arithmetic, equations,
   percentages, units and currency conversion (`500 EUR to USD`, `10 km to miles`).
 - **Web search** with DuckDuckGo, Google, Brave, Bing, Startpage or a custom URL
-  template; supports URLs and `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`
-  and `!define` shortcuts.
+  template; supports URLs and `!g`, `!ddg`, `!w`, `!yt`, `!gh`, `!aur`, `!maps`,
+  `!define`, `!arch`, `!man`, `!docs` and `!pkg` shortcuts.
 - **Files** through direct path expansion and asynchronous optional `fd` search.
+  Filename matches rank above parent-path matches, and glob patterns such as
+  `*.png` are supported by `fd`.
 - **Clipboard history** through `cliphist`, with explicit `clip ` search and
   optional low-priority automatic matching. The history is cached in memory and
   never written to disk by the launcher.
 - **Dictionary** shortcuts for `define <word>`.
-- **GitHub** search for `github <query>` or `gh <query>`.
+- **GitHub** search for `github <query>` or `gh <query>`, with repository, user
+  and issue actions plus direct `owner/repository` opening.
 - **Weather** for `weather in <city>`: an inline summary when `curl` or `wget`
   can reach wttr.in, plus an external detailed-forecast fallback. Results are
   cached in memory. A bare `weather` query uses `[weather] location` if set and
@@ -49,9 +56,9 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ![Animated demo: applications, calculator, currency, units, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
 
-The demo was recorded against v0.2.0. v0.3 keeps the same interaction and result
-presentation; the weather query now also shows an inline summary when network
-access and `curl` or `wget` are available.
+The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
+interaction and result presentation; v0.3 added inline weather and v0.4 improves
+ranking, file matching and search result categories.
 
 ## Requirements
 
@@ -242,7 +249,8 @@ timeout_seconds=4
 
 `web_engine` accepts `duckduckgo`, `google`, `brave`, `bing`, `startpage`,
 `wikipedia`, `youtube`, `github`, `aur`, `openstreetmap`, `dictionary`,
-`wiktionary`, or a custom template containing `%s` or `{query}`.
+`wiktionary`, `arch`, `man`, `docs`, `pkg`, or a custom template containing `%s`
+or `{query}`.
 
 Disable a provider by setting it to `false`. Disabled providers add no results
 and are not queried.
@@ -270,14 +278,18 @@ and are not queried.
 | `firefox 123` | Web search, without a false calculator result |
 | `python 3.14 features` | Web search, not a calculation |
 | `report.pdf` | Local file search and direct path when it exists |
+| `*.png` | Glob file search through `fd` |
 | `steam` | Installed application ranked highly |
+| `steam games` | Steam itself above its catalogue entries, with web search below |
 | `zen` / `kitty` | Application match, with files below |
 | `~/Downloads/report.pdf` | Direct file or directory open |
 | `define ephemeral` | Dictionary links |
-| `github hyprwhispr` | GitHub repository search |
+| `github hyprwhispr` | GitHub repository, user and issue search |
+| `github owner/repository` | Direct repository opening plus search actions |
 | `weather in Tokyo` | Inline weather when available, plus an external forecast action |
 | `hyprland configuration` | Web search |
 | `!yt linux customization` | YouTube search |
+| `!docs glib main loop` | DevDocs search |
 | `clip github` | Search clipboard history |
 | `python` | Applications, files and web results ranked together |
 
@@ -301,6 +313,7 @@ tests/
   test_core.c    Query, ranking, URL and configuration tests
   test_process.c Async process success, cancellation and failure tests
   test_weather.c Weather location, URL and response parsing tests
+  test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the provider and async
@@ -311,10 +324,13 @@ search, files, clipboard, dictionary, GitHub and weather. A query can be relevan
 to several providers; there is no single provider-suppressing intent. Ranking
 combines match quality, provider relevance and a local-action bonus:
 
-1. Exact title, prefix and token matches produce a match score.
-2. The query analysis adds provider relevance.
-3. Local providers get a small preference over external actions.
-4. Results are sorted deterministically by score, provider and title.
+1. Application matching takes the strongest of name, executable, keyword and
+   desktop-term matches; weak description-only matches are discounted.
+2. File matching ranks filename hits above parent-path hits.
+3. The query analysis adds provider relevance.
+4. Local providers get a small preference over external actions.
+5. Results with the same provider and target are deduplicated.
+6. Results are sorted deterministically by score, provider and title.
 
 Async work uses a query-generation counter and a per-query `GCancellable`.
 Applications and local analysis render immediately. `qalc`, `fd`, cliphist refresh,
@@ -353,10 +369,13 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-The core tests check query analysis, URL encoding, provider relevance, ranking,
+The core tests check query analysis, application/file match helpers, URL
+encoding, GitHub/web URL construction, provider relevance, ranking, deduplication,
 configuration and invalid input. The weather tests use fixtures and do not require
 network access. The process tests check asynchronous success, cancellation and
-spawn failures. An interactive smoke test can be run on Wayland:
+spawn failures. The rapid-query smoke test requires Xvfb and `xdotool`; it starts
+Rofi with a fake weather fetcher and closes the launcher while requests are
+pending. An interactive smoke test can be run on Wayland:
 
 ```sh
 ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
@@ -378,7 +397,8 @@ exchange rates.
 
 **Files do not appear**
 Install `fd`. File search is limited by `max_depth`, `max_results` and a short
-timeout so the launcher stays responsive. Direct paths always work.
+timeout so the launcher stays responsive. Direct paths always work. Glob patterns
+such as `*.png` use `fd --glob`.
 
 **Clipboard results are empty**
 Install `cliphist` and `wl-clipboard`. Explicit search uses the `clip ` prefix.
@@ -405,15 +425,17 @@ does not ship a theme and preserves the look of your existing Rofi setup.
 
 - Inline weather depends on the public wttr.in service and an optional `curl` or
   `wget` binary. It degrades to an external forecast link when unavailable.
-- Web search opens a browser action; it does not scrape search-engine result
-  pages or display live previews.
+- Web search and dictionary results open browser actions; they do not scrape
+  search-engine pages, display live previews or show inline dictionary
+  definitions.
 - Neither the RPM nor the PKGBUILD is published in official distribution
   repositories.
 - Rofi plugin ABI compatibility is bounded by the Rofi version used to build the
   plugin. Rebuild after a Rofi major upgrade.
 - Subprocess output is buffered in memory by the existing process helper. The
   clipboard result cache is bounded, but extremely large output from an optional
-  external tool is not incrementally capped.
+  external tool is not incrementally capped. A streaming output cap remains
+  deferred.
 
 ## License
 

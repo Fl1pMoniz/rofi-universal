@@ -15,6 +15,7 @@ static void test_calculable(void) {
   g_assert_true(u_query_looks_calculable("150 to hex"));
   g_assert_true(u_query_looks_calculable("10 in binary"));
   g_assert_true(u_query_looks_calculable("25% of 180"));
+  g_assert_true(u_query_looks_calculable("0xff to decimal"));
   g_assert_false(u_query_looks_calculable("firefox"));
   g_assert_false(u_query_looks_calculable("hyprland configuration"));
   g_assert_false(u_query_looks_calculable("python3"));
@@ -120,6 +121,62 @@ static void test_analysis(void) {
   g_assert_cmpint(analysis.app_score, >=, 500);
   g_assert_cmpint(u_provider_relevance(&analysis, U_PROVIDER_APPS), >=,
                   u_provider_relevance(&analysis, U_PROVIDER_WEB));
+
+  u_analyze_query("python 3.14 examples", &analysis);
+  g_assert_cmpint(analysis.calc_score, <, 600);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+
+  u_analyze_query("rofi alternatives", &analysis);
+  g_assert_cmpint(analysis.web_score, >=, 750);
+}
+
+static void test_match_helpers(void) {
+  g_assert_cmpint(u_app_match_score("firefox", "firefox", "web browser",
+                                    "firefox firefox web browser", "firefox"),
+                  ==, 1000);
+  g_assert_cmpint(u_app_match_score(
+                      "visual studio code", "code", "editor;ide",
+                      "visual studio code code editor", "code"),
+                  >=, 1000);
+  g_assert_cmpint(u_app_match_score("steam", "steam", "gaming;store",
+                                    "steam steam gaming store", "steam games"),
+                  >=, 500);
+  g_assert_cmpint(u_app_match_score("python", "python3", "language",
+                                    "python python3 language",
+                                    "python 3.14 features"),
+                  >=, 500);
+  g_assert_cmpint(u_app_match_score("007 first light", "steam", "game",
+                                    "007 first light game steam",
+                                    "steam games"),
+                  >=, 400);
+  g_assert_cmpint(u_app_match_score("007 first light", "steam", "game",
+                                    "007 first light game steam",
+                                    "steam games"),
+                  <, 500);
+  g_assert_cmpint(u_app_match_score("firefox", "firefox", "web browser",
+                                    "firefox firefox web browser", "browser"),
+                  >=, 500);
+  g_assert_cmpint(u_app_match_score("kitty", "kitty", "terminal emulator",
+                                    "kitty kitty terminal emulator",
+                                    "terminal"),
+                  >=, 500);
+  g_assert_cmpint(u_app_match_score("foo", "foo", "bar",
+                                    "foo foo bar games", "games"),
+                  <, 550);
+  g_assert_cmpint(u_app_match_score("firefox", "firefox", "web browser",
+                                    "firefox firefox web browser",
+                                    "libreoffice"),
+                  ==, 0);
+  g_assert_cmpint(u_file_match_score("/tmp/report.pdf", "report.pdf"), >=,
+                  1000);
+  g_assert_cmpint(u_file_match_score("/tmp/hyprland.conf", "hypr"), >=, 850);
+  g_assert_cmpint(u_file_match_score("/tmp/foo.png", "*.png"), >=, 400);
+
+  g_assert_true(u_query_has_glob("*.png"));
+  g_assert_true(u_query_has_glob("report?.pdf"));
+  g_assert_true(u_query_has_glob("[ab].txt"));
+  g_assert_false(u_query_has_glob("report.pdf"));
+  g_assert_false(u_query_has_glob("hyprland.conf"));
 }
 
 static void test_provider_relevance(void) {
@@ -189,6 +246,35 @@ static void test_urls(void) {
   url = u_search_url("duckduckgo", "a&b?c");
   g_assert_cmpstr(url, ==, "https://duckduckgo.com/?q=a%26b%3Fc");
   g_free(url);
+  url = u_search_url("arch", "hyprland configuration");
+  g_assert_cmpstr(url, ==,
+                  "https://wiki.archlinux.org/index.php?search=hyprland%20"
+                  "configuration");
+  g_free(url);
+  url = u_search_url("man", "rofi");
+  g_assert_cmpstr(url, ==, "https://man.archlinux.org/search?q=rofi");
+  g_free(url);
+  url = u_search_url("docs", "glib main loop");
+  g_assert_cmpstr(url, ==, "https://devdocs.io/#q=glib%20main%20loop");
+  g_free(url);
+  url = u_search_url("pkg", "rofi");
+  g_assert_cmpstr(url, ==, "https://archlinux.org/packages/?q=rofi");
+  g_free(url);
+  url = u_github_search_url("rofi plugins", "repositories");
+  g_assert_cmpstr(url, ==,
+                  "https://github.com/search?type=repositories&q=rofi%20"
+                  "plugins");
+  g_free(url);
+  url = u_github_search_url("rofi", "users");
+  g_assert_cmpstr(url, ==,
+                  "https://github.com/search?type=users&q=rofi");
+  g_free(url);
+  url = u_github_repo_url("Fl1pMoniz/rofi-universal");
+  g_assert_cmpstr(url, ==,
+                  "https://github.com/Fl1pMoniz/rofi-universal");
+  g_free(url);
+  g_assert_null(u_github_repo_url("rofi plugins"));
+  g_assert_null(u_github_repo_url("a/b/c"));
 }
 
 static void test_ranking(void) {
@@ -208,6 +294,43 @@ static void test_ranking(void) {
                   u_intent_boost(U_INTENT_CALC, U_PROVIDER_WEB));
   g_assert_cmpint(u_intent_boost(U_INTENT_APP, U_PROVIDER_APPS), >,
                   u_intent_boost(U_INTENT_APP, U_PROVIDER_WEB));
+}
+
+static void test_dedup(void) {
+  GPtrArray *results = g_ptr_array_new();
+  g_ptr_array_add(results,
+                  u_result_new(U_PROVIDER_WEATHER, "low", "d", "i", 100,
+                               U_ACTION_OPEN_URI, "https://example/weather",
+                               "low"));
+  g_ptr_array_add(results,
+                  u_result_new(U_PROVIDER_WEATHER, "high", "d", "i", 300,
+                               U_ACTION_OPEN_URI, "https://example/weather",
+                               "high"));
+  g_ptr_array_add(results,
+                  u_result_new(U_PROVIDER_WEB, "web", "d", "i", 200,
+                               U_ACTION_OPEN_URI, "https://example/web", "web"));
+  g_ptr_array_add(results,
+                  u_result_new(U_PROVIDER_CALC, "hint-a", "d", "i", 100,
+                               U_ACTION_NONE, NULL, NULL));
+  g_ptr_array_add(results,
+                  u_result_new(U_PROVIDER_CALC, "hint-b", "d", "i", 200,
+                               U_ACTION_NONE, NULL, NULL));
+  u_results_dedup(results);
+  g_assert_cmpuint(results->len, ==, 4);
+  gboolean saw_high = FALSE;
+  for (guint i = 0; i < results->len; i++) {
+    UResult *result = g_ptr_array_index(results, i);
+    if (result->provider == U_PROVIDER_WEATHER &&
+        g_strcmp0(result->payload, "https://example/weather") == 0) {
+      g_assert_cmpstr(result->title, ==, "high");
+      saw_high = TRUE;
+    }
+  }
+  g_assert_true(saw_high);
+  for (guint i = 0; i < results->len; i++) {
+    u_result_free(g_ptr_array_index(results, i));
+  }
+  g_ptr_array_free(results, TRUE);
 }
 
 static void test_config(void) {
@@ -277,9 +400,11 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/calculable", test_calculable);
   g_test_add_func("/core/analysis", test_analysis);
   g_test_add_func("/core/provider-relevance", test_provider_relevance);
+  g_test_add_func("/core/match-helpers", test_match_helpers);
   g_test_add_func("/core/intent", test_intent);
   g_test_add_func("/core/urls", test_urls);
   g_test_add_func("/core/ranking", test_ranking);
+  g_test_add_func("/core/dedup", test_dedup);
   g_test_add_func("/core/config", test_config);
   return g_test_run();
 }

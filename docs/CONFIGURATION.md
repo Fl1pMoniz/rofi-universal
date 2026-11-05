@@ -28,7 +28,7 @@ open_command=xdg-open
 
 Built-in web engines: `duckduckgo`, `google`, `brave`, `bing`, `startpage`,
 `wikipedia`, `youtube`, `github`, `aur`, `openstreetmap`, `dictionary`,
-`wiktionary`.
+`wiktionary`, `arch`, `man`, `docs`, `pkg`.
 
 Custom example:
 
@@ -71,7 +71,9 @@ max_results=8
 `roots` is a colon-separated list. Each root is searched with `fd` when the query
 looks like an application or file name. The search is bounded by a short timeout,
 `max_depth` and `max_results`. Direct paths such as `~/Downloads/report.pdf` are
-opened without `fd`.
+opened without `fd`. Filename matches rank above parent-path matches. Queries
+containing glob characters use `fd --glob`, for example `*.png`, `report?.pdf` or
+`[ab].txt`.
 
 ## Clipboard
 
@@ -91,6 +93,17 @@ results are deliberately ranked below applications and calculations. Automatic
 matching is off by default because clipboard history can contain passwords or
 private text. The cliphist list is cached in memory for `cache_seconds` and is
 never written to a persistent cache by the launcher.
+
+## GitHub and web shortcuts
+
+`github <query>` or `gh <query>` shows repository, user and issue search actions.
+A query in `owner/repository` form also offers direct repository opening:
+`github Fl1pMoniz/rofi-universal`.
+
+Web bangs include `!arch` (Arch Wiki), `!man` (Arch man pages), `!docs`
+(DevDocs) and `!pkg` (Arch packages), in addition to the general search-engine
+and site-specific bangs listed above. These open browser actions; they do not
+scrape result pages.
 
 ## Weather
 
@@ -124,13 +137,22 @@ Query analysis is intentionally small and predictable:
   `firefox 123` is not a calculation.
 - A single word with no special form gets a strong application signal.
 - Multi-word natural-language queries get a web signal; words such as `features`,
-  `configuration`, `guide`, `documentation`, `install` and `error` strengthen it.
+  `configuration`, `guide`, `documentation`, `install`, `examples`,
+  `alternatives`, `comparison`, `review`, `reference`, `manual`, `download` and
+  `error` strengthen it.
+- Application matching uses the strongest name, executable, keyword or desktop
+  term match. Description-only matches are discounted, and a query that begins
+  with an application name gets a lower boost than an exact application match.
 
 Each provider receives an independent relevance signal. A query can be relevant
 to applications, files, calculations, web search and clipboard at the same time;
 there is no single intent that suppresses the others. Providers score matches by
 exact title, prefix, keyword, executable and token matches. Ranking combines
 provider relevance, match quality and a small local-action preference.
+
+Results with the same provider and target are deduplicated, keeping the higher
+score. For example, an inline weather summary replaces the redundant external
+forecast action when both point to the same forecast URL.
 
 Local results render immediately. qalc, fd, clipboard refresh, bookmark loading
 and inline weather retrieval run asynchronously. A new query cancels obsolete

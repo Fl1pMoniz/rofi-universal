@@ -94,6 +94,7 @@ UResult *u_result_new(UProvider provider, const char *title,
                       UAction action, const char *payload,
                       const char *copy_text);
 void u_result_free(gpointer data);
+void u_results_dedup(GPtrArray *results);
 int u_result_compare(gconstpointer a, gconstpointer b);
 const char *u_provider_name(UProvider provider);
 const char *u_provider_icon(UProvider provider);
@@ -104,6 +105,13 @@ UIntent u_classify_intent(const char *query, gboolean *calc_like,
                           gboolean *path_like);
 int u_provider_relevance(const UQueryAnalysis *analysis, UProvider provider);
 int u_score_signals(int match, int relevance, gboolean local);
+int u_match_score_folded(const char *haystack, const char *title,
+                         const char *query);
+int u_app_match_score(const char *name, const char *executable,
+                      const char *keywords, const char *terms,
+                      const char *query);
+int u_file_match_score(const char *path, const char *query);
+gboolean u_query_has_glob(const char *query);
 gboolean u_query_is_url(const char *query);
 gboolean u_query_is_path(const char *query);
 gboolean u_query_looks_calculable(const char *query);
@@ -111,6 +119,8 @@ gboolean u_query_looks_calculable(const char *query);
 char *u_url_encode(const char *text);
 char *u_search_url(const char *engine, const char *query);
 const char *u_web_engine_template(const char *engine);
+char *u_github_search_url(const char *query, const char *type);
+char *u_github_repo_url(const char *term);
 
 void u_config_init(UConfig *config);
 gboolean u_config_load(UConfig *config, const char *path);

@@ -23,8 +23,9 @@ avoid duplicate shortcut results.
 
 `src/query.c` contains deterministic rules only. There is no AI model, token
 budget or network call in classification. Natural-language queries containing
-words such as `features`, `configuration`, `guide` or `documentation` receive a
-stronger web signal without suppressing application or file matches.
+words such as `features`, `configuration`, `guide`, `documentation`, `examples`,
+`alternatives`, `comparison`, `review`, `reference`, `manual`, `download` or `api`
+receive a stronger web signal without suppressing application or file matches.
 
 ## Ranking
 
@@ -32,7 +33,16 @@ Each provider creates `UResult` objects with a base match score. `plugin.c` adds
 
 - provider relevance from the query analysis,
 - a small local-action bonus for applications, calculations, files and clipboard.
-- a higher score for inline weather summaries than the external forecast action.
+
+Application matching uses `u_app_match_score()` across name, executable, keyword
+and desktop-term fields. The strongest field wins, but description-only terms are
+discounted and executable-prefix matches are weighted below name-prefix matches,
+so `steam games` ranks Steam itself above catalogue entries. File results use
+`u_file_match_score()` to rank filename hits above parent-path hits.
+
+`u_results_dedup()` collapses results with the same provider and payload, keeping
+the higher score. Inline weather and the external forecast action share a URL, so
+the inline summary replaces the fallback when present.
 
 `u_score_signals()` and `u_provider_relevance()` are testable in `test_core.c`.
 Sorting is deterministic: score, provider, then title.
@@ -66,11 +76,18 @@ unavailable, the external wttr.in action remains.
 `src/weather.c` also owns the cache, retry-backoff, fetcher-selection and
 weather-command construction helpers. These are tested without network access.
 The process helper reports non-zero exits as failures, so failed curl/wget
-requests never become weather results.
+requests never become weather results. Subprocess stdout/stderr are still fully
+buffered by `GSubprocess`; a streaming output cap is deferred because it requires
+a larger process-lifecycle change.
 
 On plugin destruction, all jobs have their mode pointer cleared, cancellables are
 cancelled, and result/cache arrays are released. Late callbacks free their job
 without touching the destroyed mode.
+
+`tests/test_rapid_queries.py` exercises this path under Xvfb. It uses a fake
+weather fetcher, sends several rapid queries with `xdotool`, closes Rofi while a
+request is pending, and checks for clean teardown and the absence of crash
+markers. It is a lifecycle smoke test rather than a row-level assertion.
 
 ## Result ownership
 

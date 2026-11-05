@@ -46,10 +46,12 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
 - Prefer documented command-line tools over copied source code.
 - Local results must not block on network requests.
 - Missing optional dependencies must degrade gracefully.
-- Add or update tests in `tests/test_core.c` for query analysis, ranking,
-  configuration or URL changes. Add process tests in `tests/test_process.c` for
-  async behavior, and weather parsing/cache/backoff/fetcher tests in
-  `tests/test_weather.c`.
+- Add or update tests in `tests/test_core.c` for query analysis, application/file
+  matching, ranking, deduplication, configuration or URL changes. Add process
+  tests in `tests/test_process.c` for async behavior, and weather
+  parsing/cache/backoff/fetcher tests in `tests/test_weather.c`.
+- Run `tests/test_rapid_queries.py` under Xvfb when changing lifecycle, weather
+  request handling or plugin teardown. It requires `xdotool`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration
@@ -70,6 +72,8 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
    generations.
 6. Add a test and document the provider in `README.md`,
    `docs/CONFIGURATION.md`, and the example configuration.
+7. If results can collide with an existing provider action, use a stable payload
+   so `u_results_dedup()` can keep the higher-scoring result.
 
 ## Licensing
 

@@ -30,7 +30,7 @@ while IFS= read -r file; do
     mkdir -p "$(dirname "$dest")"
     cp "$file" "$dest"
     case "$file" in
-        scripts/*|data/rofi-universal|tests/test_integration.py)
+        scripts/*|data/rofi-universal|tests/test_integration.py|tests/test_rapid_queries.py)
             chmod 0755 "$dest"
             ;;
         *)

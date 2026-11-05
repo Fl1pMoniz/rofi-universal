@@ -31,6 +31,42 @@ void u_result_free(gpointer data) {
   g_free(result);
 }
 
+void u_results_dedup(GPtrArray *results) {
+  if (!results || results->len < 2) {
+    return;
+  }
+  GHashTable *seen =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  GPtrArray *unique = g_ptr_array_new();
+  for (guint i = 0; i < results->len; i++) {
+    UResult *result = g_ptr_array_index(results, i);
+    if (!result->payload || !*result->payload) {
+      g_ptr_array_add(unique, result);
+      continue;
+    }
+    char *key = g_strdup_printf("%d:%s", (int)result->provider,
+                                result->payload);
+    gpointer found = g_hash_table_lookup(seen, key);
+    if (found) {
+      guint index = GPOINTER_TO_UINT(found) - 1;
+      UResult *existing = g_ptr_array_index(unique, index);
+      if (result->score > existing->score) {
+        unique->pdata[index] = result;
+      }
+      g_free(key);
+    } else {
+      g_ptr_array_add(unique, result);
+      g_hash_table_insert(seen, key, GUINT_TO_POINTER(unique->len));
+    }
+  }
+  g_ptr_array_set_size(results, 0);
+  for (guint i = 0; i < unique->len; i++) {
+    g_ptr_array_add(results, g_ptr_array_index(unique, i));
+  }
+  g_ptr_array_free(unique, TRUE);
+  g_hash_table_destroy(seen);
+}
+
 int u_result_compare(gconstpointer a, gconstpointer b) {
   const UResult *left = *(UResult *const *)a;
   const UResult *right = *(UResult *const *)b;
@@ -148,7 +184,40 @@ const char *u_web_engine_template(const char *engine) {
   if (g_ascii_strcasecmp(engine, "wiktionary") == 0) {
     return "https://en.wiktionary.org/w/index.php?search=%s";
   }
+  if (g_ascii_strcasecmp(engine, "arch") == 0 ||
+      g_ascii_strcasecmp(engine, "archwiki") == 0) {
+    return "https://wiki.archlinux.org/index.php?search=%s";
+  }
+  if (g_ascii_strcasecmp(engine, "man") == 0) {
+    return "https://man.archlinux.org/search?q=%s";
+  }
+  if (g_ascii_strcasecmp(engine, "docs") == 0 ||
+      g_ascii_strcasecmp(engine, "devdocs") == 0) {
+    return "https://devdocs.io/#q=%s";
+  }
+  if (g_ascii_strcasecmp(engine, "pkg") == 0 ||
+      g_ascii_strcasecmp(engine, "packages") == 0) {
+    return "https://archlinux.org/packages/?q=%s";
+  }
   return "https://duckduckgo.com/?q=%s";
+}
+
+char *u_github_search_url(const char *query, const char *type) {
+  const char *kind = type && *type ? type : "repositories";
+  char *encoded = u_url_encode(query ? query : "");
+  char *url = g_strdup_printf("https://github.com/search?type=%s&q=%s",
+                              kind, encoded);
+  g_free(encoded);
+  return url;
+}
+
+char *u_github_repo_url(const char *term) {
+  if (!term || !*term ||
+      !g_regex_match_simple("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", term, 0,
+                            0)) {
+    return NULL;
+  }
+  return g_strdup_printf("https://github.com/%s", term);
 }
 
 char *u_search_url(const char *engine, const char *query) {

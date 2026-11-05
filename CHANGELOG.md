@@ -3,6 +3,44 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.4.0] - 2026-11-05
+
+### Added
+
+- Application match scoring across names, generic names, keywords, desktop IDs,
+  executables and command terms. Query-leading app names now surface the app for
+  queries such as `steam games` without giving every Steam game the same rank.
+- File matching ranked by filename versus parent path, plus glob search support
+  for patterns such as `*.png`, `report?.pdf` and `[ab].txt`.
+- Web shortcuts for Arch Wiki (`!arch`), Arch man pages (`!man`), DevDocs
+  (`!docs`) and Arch packages (`!pkg`).
+- GitHub repository, user and issue search actions, plus direct `owner/repo`
+  opening.
+- Duplicate suppression for results with the same provider and payload. Inline
+  weather now replaces the redundant forecast action when both are present.
+- Xvfb rapid-query, cancellation and teardown smoke test in CI.
+
+### Changed
+
+- Expanded natural-language web signals with terms such as `examples`,
+  `alternatives`, `comparison`, `review`, `reference`, `manual`, `download` and
+  `api`.
+- Generic application matches are weighted below direct name and executable
+  matches, so `steam games` ranks Steam itself above its catalogue entries.
+- Inline weather descriptions now say `Weather · forecast` because selecting the
+  inline result opens the detailed forecast.
+
+### Fixed
+
+- Weak executable-prefix matches can no longer outrank the named application.
+- Empty or malformed weather responses and process failures remain rejected.
+
+### Deferred
+
+- Subprocess stdout is still fully buffered; a streaming output cap was not
+  introduced because it needs a larger process-lifecycle change.
+- Inline dictionary definitions and search-engine previews remain deferred.
+
 ## [0.3.1] - 2026-11-05
 
 ### Added
