@@ -1474,7 +1474,7 @@ static void execute_clipboard(const char *id) {
   char *output = NULL;
   int exit_status = -1;
   if (u_process_capture_sync_limited(argv, U_PROCESS_DEFAULT_MAX_OUTPUT,
-                                     &output, &exit_status) &&
+                                     5000, &output, &exit_status) &&
       output && g_utf8_validate(output, -1, NULL)) {
     copy_to_clipboard(output);
   }

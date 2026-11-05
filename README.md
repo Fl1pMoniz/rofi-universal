@@ -72,8 +72,9 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
 interaction and result presentation; v0.3 added inline weather, v0.4 improved
 ranking and search categories, v0.5 added inline dictionary definitions, v0.6
-improved URL recognition and action-oriented descriptions, and v0.7 adds file
-reveal actions and bounded clipboard decoding.
+improved URL recognition and action-oriented descriptions, v0.7 added file
+reveal actions and bounded clipboard decoding, and v0.8 adds reliability and
+query-regression coverage.
 
 ## Requirements
 
@@ -346,8 +347,10 @@ tests/
   test_dictionary.c Dictionary URL, JSON parsing and cache tests
   test_rapid_queries.py Xvfb rapid-query, cancellation and teardown smoke test
   test_file_actions.py Xvfb Alt+1 reveal fallback test
+  test_filemanager_dbus.py Mock FileManager1 success-path test
   test_clipboard_actions.py Xvfb clipboard decode/copy test with fake tools
-  benchmark_core.c Optional query-analysis and app-matching benchmark
+  test_query_regression.c Structured query-intent and negative regression cases
+  benchmark_core.c Optional query, matching, formatting and dedup benchmark
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the provider and async
@@ -435,8 +438,10 @@ meson compile -C build benchmark-core
 ./build/benchmark-core
 ```
 
-It measures repeated query analysis and application matching on the local
-machine; timings are environment-specific and are not used as CI gates.
+It measures repeated query analysis, application/file matching, display
+formatting and result deduplication on the local machine. See
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) for the methodology and a reference run;
+timings are environment-specific and are not used as CI gates.
 
 ## Troubleshooting
 
@@ -498,14 +503,13 @@ does not ship a theme and preserves the look of your existing Rofi setup.
   and stderr at 4 MiB per stream. Output above the cap is treated as a failed
   operation, not silently parsed. Clipboard decoding uses a separate bounded
   synchronous helper for the explicit copy action; items above 4 MiB, binary
-  items and invalid UTF-8 are refused.
+  items and invalid UTF-8 are refused, and decode has a 5-second timeout.
 - File reveal depends on `org.freedesktop.FileManager1`. When unavailable, the
   containing directory is opened through the desktop's default handler. This
   path is not tested against every file manager or desktop environment.
 - Clipboard image/binary clipboard workflows are not copied by the inline
   clipboard action; only valid UTF-8 text up to 4 MiB is supported. Decoding
-  remains a synchronous explicit action with no separate timeout beyond the
-  local `cliphist` process.
+  remains a synchronous explicit action with a 5-second timeout.
 
 ## License
 

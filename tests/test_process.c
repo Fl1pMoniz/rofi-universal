@@ -185,7 +185,7 @@ static void test_sync_capture(void) {
   char *output = NULL;
   int status = -1;
   const char *argv[] = {"/bin/sh", "-c", "printf hello", NULL};
-  g_assert_true(u_process_capture_sync_limited(argv, 100, &output, &status));
+  g_assert_true(u_process_capture_sync_limited(argv, 100, 0, &output, &status));
   g_assert_cmpstr(output, ==, "hello");
   g_assert_cmpint(status, ==, 0);
   g_free(output);
@@ -193,14 +193,14 @@ static void test_sync_capture(void) {
   output = NULL;
   status = -1;
   const char *exact[] = {"/bin/sh", "-c", "printf 12345", NULL};
-  g_assert_true(u_process_capture_sync_limited(exact, 5, &output, &status));
+  g_assert_true(u_process_capture_sync_limited(exact, 5, 0, &output, &status));
   g_assert_cmpstr(output, ==, "12345");
   g_free(output);
 
   output = (char *)"unchanged";
   status = -1;
   const char *large[] = {"/bin/sh", "-c", "printf 1234567890", NULL};
-  g_assert_false(u_process_capture_sync_limited(large, 5, &output, &status));
+  g_assert_false(u_process_capture_sync_limited(large, 5, 0, &output, &status));
   g_assert_null(output);
 }
 
@@ -209,7 +209,19 @@ static void test_sync_capture_binary(void) {
   int status = -1;
   const char *binary[] = {"/bin/sh", "-c", "printf 'a\\0b'", NULL};
   g_assert_false(
-      u_process_capture_sync_limited(binary, 100, &output, &status));
+      u_process_capture_sync_limited(binary, 100, 0, &output, &status));
+  g_assert_null(output);
+}
+
+static void test_sync_capture_timeout(void) {
+  char *output = NULL;
+  int status = -1;
+  gint64 start = g_get_monotonic_time();
+  const char *hang[] = {"/bin/sh", "-c", "sleep 5; printf late", NULL};
+  g_assert_false(
+      u_process_capture_sync_limited(hang, 100, 100, &output, &status));
+  gint64 elapsed = g_get_monotonic_time() - start;
+  g_assert_cmpint(elapsed, <, 2000000);
   g_assert_null(output);
 }
 
@@ -217,13 +229,13 @@ static void test_sync_capture_failure(void) {
   char *output = NULL;
   int status = -1;
   const char *failed[] = {"/bin/sh", "-c", "printf bad; exit 2", NULL};
-  g_assert_false(u_process_capture_sync_limited(failed, 100, &output, &status));
+  g_assert_false(u_process_capture_sync_limited(failed, 100, 0, &output, &status));
   g_assert_null(output);
   g_assert_cmpint(status, ==, 2);
 
   const char *missing[] = {"/definitely/not/a/rofi-universal-test", NULL};
   status = -1;
-  g_assert_false(u_process_capture_sync_limited(missing, 100, &output, &status));
+  g_assert_false(u_process_capture_sync_limited(missing, 100, 0, &output, &status));
   g_assert_null(output);
   g_assert_cmpint(status, ==, -1);
 }
@@ -244,6 +256,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/process/spawn-failure", test_spawn_failure);
   g_test_add_func("/process/sync-capture", test_sync_capture);
   g_test_add_func("/process/sync-capture-binary", test_sync_capture_binary);
+  g_test_add_func("/process/sync-capture-timeout", test_sync_capture_timeout);
   g_test_add_func("/process/sync-capture-failure", test_sync_capture_failure);
   return g_test_run();
 }

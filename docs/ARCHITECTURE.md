@@ -74,10 +74,11 @@ to make a short synchronous D-Bus/default-handler call while Rofi exits; it does
 not affect search responsiveness. URI/parent construction and path-normalization
 helpers are unit-tested.
 
-Clipboard decode uses a bounded, synchronous `GSubprocess` capture after an
-explicit copy action. It caps output at 4 MiB and refuses binary or invalid UTF-8
-content. It remains separate from the async plugin jobs so that plugin teardown
-cannot cancel a requested copy. Clipboard contents are never logged.
+Clipboard decode uses a bounded, synchronous wrapper around the existing async
+process helper on a private main context. It caps output at 4 MiB, applies a
+5-second timeout, and refuses binary or invalid UTF-8 content. It remains
+separate from the plugin-lifetime async jobs so that teardown cannot cancel a
+requested copy. Clipboard contents are never logged.
 
 ## Async lifecycle
 
@@ -132,6 +133,15 @@ without touching the destroyed mode.
 
 `tests/benchmark_core.c` is an optional local benchmark target, separate from CI,
 for repeated query analysis and application matching.
+
+`tests/test_filemanager_dbus.py` runs an isolated mock
+`org.freedesktop.FileManager1` service under `dbus-run-session` and verifies the
+successful `ShowItems` call and exact file URI. The separate file-action test
+verifies the containing-directory fallback when no service is present.
+
+`tests/test_query_regression.c` contains the structured query-intent regression
+dataset used to guard application/web/calculator/file/URL/GitHub/weather/
+dictionary/shortcut behavior.
 
 `tests/test_rapid_queries.py` exercises this path under Xvfb. It uses a fake
 fetcher for both weather and dictionary requests, sends several rapid queries

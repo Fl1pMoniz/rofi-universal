@@ -307,6 +307,11 @@ static int calc_relevance(const char *text) {
   if (g_regex_match_simple("^[0-9]+(?:\\.[0-9]+)?$", text, 0, 0)) {
     return 250;
   }
+  if (matches("^0[xX][0-9a-fA-F]+$", text) ||
+      matches("^0[bB][01]+$", text) ||
+      matches("^0[oO][0-7]+$", text)) {
+    return 850;
+  }
   if (matches("\\b(sqrt|cbrt|sin|cos|tan|asin|acos|atan|log|ln|abs|round|"
               "floor|ceil|factorial)\\s*\\(", text)) {
     return 850;

@@ -16,6 +16,7 @@ void u_process_run_limited(const char *const *argv, GCancellable *cancellable,
                            UProcessDoneFunc done, gpointer user_data);
 gboolean u_process_capture_sync_limited(const char *const *argv,
                                         gsize max_output_bytes,
+                                        guint timeout_ms,
                                         char **stdout_text,
                                         int *exit_status);
 

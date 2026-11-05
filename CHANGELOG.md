@@ -3,6 +3,40 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [0.8.0] - 2026-11-05
+
+### Added
+
+- Clipboard decode now has a bounded 5-second timeout in addition to the 4 MiB
+  output cap. The sync capture uses the existing async process helper on a
+  private main context, so timeout cancellation and child termination reuse the
+  tested lifecycle code.
+- Binary data and embedded NUL output are rejected by the shared process helper
+  before provider callbacks can parse them.
+- Structured query regression suite covering application, web, calculator, file,
+  URL, GitHub, weather, dictionary, shortcut, negative, empty and Unicode cases.
+- Calculator recognition for hexadecimal, binary and octal literals such as
+  `0xff`, `0b1010` and `0o755`.
+- Mock `org.freedesktop.FileManager1` success-path test under `dbus-run-session`
+  that verifies the exact file URI sent by the reveal action.
+- Expanded benchmark target for file matching, display formatting and result
+  deduplication, with reproducible methodology in `docs/BENCHMARKS.md`.
+
+### Changed
+
+- Benchmark documentation now records environment, iteration counts and
+  methodology; results remain local reference measurements, not CI thresholds.
+- CI now runs clipboard timeout tests, the query regression suite, the
+  FileManager1 success path and the existing FileManager1 fallback test.
+
+### Investigated / retained
+
+- File reveal continues to use FileManager1 with a default-handler fallback.
+- Clipboard remains text-only; binary and oversized content are refused.
+- GitHub inline API results remain deferred because unauthenticated search rate
+  limits make typing-driven requests unreliable.
+- No configuration changes were required.
+
 ## [0.7.0] - 2026-11-05
 
 ### Added
@@ -19,6 +53,10 @@ once regular releases begin.
   binary, non-zero and missing-executable cases.
 - `Alt+1` discoverability hint in the Rofi mode message when file results are
   present.
+- A dedicated query-regression dataset covering application, web, calculator,
+  file, URL, GitHub, weather, dictionary, shortcut and negative cases.
+- Benchmark coverage for file matching, display formatting and result
+  deduplication, with methodology documented in `docs/BENCHMARKS.md`.
 
 ### Changed
 

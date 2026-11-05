@@ -58,10 +58,14 @@ ROFI_PLUGIN_PATH="$PWD/build" rofi -show universal -modi universal
   request handling or plugin teardown. It requires `xdotool`.
 - Run `tests/test_file_actions.py` under Xvfb when changing file actions. It
   verifies the Alt+1 directory fallback with a fake handler.
+- Run `tests/test_filemanager_dbus.py` under `dbus-run-session` and Xvfb when
+  changing FileManager1 reveal behavior. It uses a mock service and requires
+  PyGObject.
 - Run `tests/test_clipboard_actions.py` under Xvfb when changing clipboard
   decode/copy behavior. It uses fake cliphist/wl-copy tools.
 - Use `meson compile -C build benchmark-core && ./build/benchmark-core` for a
-  quick local query-analysis/matching sanity check; benchmarks are not CI gates.
+  quick local query-analysis/matching/formatting/dedup sanity check; benchmarks
+  are not CI gates. Methodology and limitations are in `docs/BENCHMARKS.md`.
 - Run `meson test -C build --print-errorlogs` and a manual Rofi smoke test before
   opening a pull request.
 - Keep documentation and `data/config.example.ini` in sync with configuration

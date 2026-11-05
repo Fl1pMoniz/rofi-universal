@@ -94,8 +94,8 @@ decodes it with `cliphist` and copies it to the Wayland clipboard with `wl-copy`
 (or X11 `xclip`/`xsel`). Decoding is bounded to 4 MiB. Binary entries and invalid
 UTF-8 are refused rather than copied; the clipboard provider is text-only. The
 decode/copy action is an explicit synchronous operation and never logs or
-persists clipboard contents. It has no separate timeout beyond the local
-`cliphist` process; oversized, binary or invalid-UTF-8 selections are refused.
+persists clipboard contents. It has a 5-second timeout and refuses oversized,
+binary or invalid-UTF-8 selections.
 
 Set `automatic=true` to also include clipboard matches in normal searches. These
 results are deliberately ranked below applications and calculations. Automatic

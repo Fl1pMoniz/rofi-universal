@@ -37,9 +37,9 @@ Include:
   stdout and stderr at 4 MiB each. Output beyond the cap causes the operation to
   fail and the child to be terminated; truncated output is not treated as a
   successful provider result. Clipboard decoding uses a separate bounded
-  synchronous capture for explicit copy actions; items above 4 MiB, binary data
-  and invalid UTF-8 are refused. Clipboard contents are never logged or written
-  to a persistent cache by the launcher.
+  synchronous capture for explicit copy actions with a 5-second timeout; items
+  above 4 MiB, binary data and invalid UTF-8 are refused. Clipboard contents are
+  never logged or written to a persistent cache by the launcher.
 - **Network access** is limited to qalc exchange-rate updates, optional inline
   weather retrieval, optional inline dictionary retrieval, and opening web
   actions chosen by the user. Inline weather sends the requested city to

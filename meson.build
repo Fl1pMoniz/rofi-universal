@@ -1,7 +1,7 @@
 project(
   'rofi-universal',
   'c',
-  version: '0.7.0',
+  version: '0.8.0',
   license: 'MIT',
   default_options: ['warning_level=3', 'c_std=c11'],
 )
@@ -42,6 +42,14 @@ test_core = executable(
   include_directories: include_directories('src'),
 )
 test('core', test_core)
+
+test_query_regression = executable(
+  'test-query-regression',
+  ['tests/test_query_regression.c', 'src/universal.c', 'src/query.c'],
+  dependencies: [glib],
+  include_directories: include_directories('src'),
+)
+test('query-regression', test_query_regression)
 
 benchmark_core = executable(
   'benchmark-core',

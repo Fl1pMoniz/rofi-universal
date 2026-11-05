@@ -14,7 +14,7 @@ typedef struct {
   GString *stdout_text;
   GString *stderr_text;
   gsize max_output;
-  guint timeout_source;
+  GSource *timeout_source;
   gboolean truncated;
   gboolean cancelled;
   gboolean timed_out;
@@ -50,7 +50,6 @@ static void process_cancelled(GCancellable *cancellable, gpointer data) {
 
 static gboolean process_timed_out(gpointer data) {
   UProcessContext *context = data;
-  context->timeout_source = 0;
   context->timed_out = TRUE;
   if (context->read_cancellable) {
     g_cancellable_cancel(context->read_cancellable);
@@ -165,8 +164,9 @@ static void process_finish(UProcessContext *context) {
   }
   context->finished = TRUE;
   if (context->timeout_source) {
-    g_source_remove(context->timeout_source);
-    context->timeout_source = 0;
+    g_source_destroy(context->timeout_source);
+    g_source_unref(context->timeout_source);
+    context->timeout_source = NULL;
   }
   if (context->cancel_handler && context->cancellable) {
     g_cancellable_disconnect(context->cancellable, context->cancel_handler);
@@ -175,6 +175,12 @@ static void process_finish(UProcessContext *context) {
   gboolean success = context->wait_ok && !context->cancelled &&
                      !context->timed_out && !context->truncated &&
                      !context->read_error && context->exit_status == 0;
+  if ((context->stdout_text->len > 0 &&
+       memchr(context->stdout_text->str, '\0', context->stdout_text->len)) ||
+      (context->stderr_text->len > 0 &&
+       memchr(context->stderr_text->str, '\0', context->stderr_text->len))) {
+    success = FALSE;
+  }
   char *stdout_text = g_string_free(context->stdout_text, FALSE);
   char *stderr_text = g_string_free(context->stderr_text, FALSE);
   if (stdout_text && !g_utf8_validate(stdout_text, -1, NULL)) {
@@ -264,8 +270,10 @@ void u_process_run_limited(const char *const *argv, GCancellable *cancellable,
                               context, NULL);
   }
   if (timeout_ms > 0) {
-    context->timeout_source =
-        g_timeout_add(timeout_ms, process_timed_out, context);
+    GSource *timeout = g_timeout_source_new(timeout_ms);
+    g_source_set_callback(timeout, process_timed_out, context, NULL);
+    g_source_attach(timeout, g_main_context_get_thread_default());
+    context->timeout_source = timeout;
   }
   process_start_read(context, TRUE);
   process_start_read(context, FALSE);
@@ -278,8 +286,30 @@ void u_process_run(const char *const *argv, GCancellable *cancellable,
                         done, user_data);
 }
 
+typedef struct {
+  GMainLoop *loop;
+  char *stdout_text;
+  char *stderr_text;
+  gboolean success;
+  gboolean done;
+  int exit_status;
+} USyncCapture;
+
+static void sync_capture_done(const char *stdout_text,
+                              const char *stderr_text, int exit_status,
+                              gboolean success, gpointer data) {
+  USyncCapture *capture = data;
+  capture->stdout_text = g_strdup(stdout_text);
+  capture->stderr_text = g_strdup(stderr_text);
+  capture->success = success;
+  capture->exit_status = exit_status;
+  capture->done = TRUE;
+  g_main_loop_quit(capture->loop);
+}
+
 gboolean u_process_capture_sync_limited(const char *const *argv,
                                         gsize max_output_bytes,
+                                        guint timeout_ms,
                                         char **stdout_text,
                                         int *exit_status) {
   if (stdout_text) {
@@ -291,67 +321,32 @@ gboolean u_process_capture_sync_limited(const char *const *argv,
   if (!argv || !argv[0]) {
     return FALSE;
   }
-  gsize limit =
-      max_output_bytes > 0 ? max_output_bytes : U_PROCESS_DEFAULT_MAX_OUTPUT;
-  GError *error = NULL;
-  GSubprocess *process = g_subprocess_newv(
-      argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
-      &error);
-  if (!process) {
-    g_clear_error(&error);
-    return FALSE;
+  GMainContext *context = g_main_context_new();
+  g_main_context_push_thread_default(context);
+  GMainLoop *loop = g_main_loop_new(context, FALSE);
+  USyncCapture capture = {.loop = loop, .exit_status = -1};
+  u_process_run_limited(argv, NULL, max_output_bytes, timeout_ms,
+                        sync_capture_done, &capture);
+  if (!capture.done) {
+    g_main_loop_run(loop);
   }
-  GInputStream *stream = g_subprocess_get_stdout_pipe(process);
-  GString *output = g_string_new(NULL);
-  guint8 buffer[READ_CHUNK];
-  gboolean ok = stream != NULL;
-  if (stream) {
-    for (;;) {
-      gssize count =
-          g_input_stream_read(stream, buffer, sizeof(buffer), NULL, &error);
-      if (count > 0) {
-        if (output->len + (gsize)count > limit) {
-          ok = FALSE;
-          g_subprocess_force_exit(process);
-          break;
-        }
-        g_string_append_len(output, (const char *)buffer, count);
-      } else if (count == 0) {
-        break;
-      } else {
-        ok = FALSE;
-        g_subprocess_force_exit(process);
-        break;
-      }
-    }
-  }
-  g_clear_error(&error);
-  if (!g_subprocess_wait(process, NULL, &error)) {
+  g_main_loop_unref(loop);
+  g_main_context_pop_thread_default(context);
+  g_main_context_unref(context);
+  gboolean ok = capture.success;
+  if (ok && capture.stdout_text &&
+      memchr(capture.stdout_text, '\0', strlen(capture.stdout_text)) != NULL) {
     ok = FALSE;
-  }
-  g_clear_error(&error);
-  int status = -1;
-  if (g_subprocess_get_if_exited(process)) {
-    status = g_subprocess_get_exit_status(process);
-  }
-  if (status != 0) {
-    ok = FALSE;
-  }
-  if (ok && memchr(output->str, '\0', output->len) != NULL) {
-    ok = FALSE;
-  }
-  if (exit_status) {
-    *exit_status = status;
   }
   if (ok) {
     if (stdout_text) {
-      *stdout_text = g_string_free(output, FALSE);
-    } else {
-      g_string_free(output, TRUE);
+      *stdout_text = g_steal_pointer(&capture.stdout_text);
     }
-  } else {
-    g_string_free(output, TRUE);
   }
-  g_object_unref(process);
+  if (exit_status) {
+    *exit_status = capture.exit_status;
+  }
+  g_free(capture.stdout_text);
+  g_free(capture.stderr_text);
   return ok;
 }

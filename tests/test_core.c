@@ -16,6 +16,9 @@ static void test_calculable(void) {
   g_assert_true(u_query_looks_calculable("10 in binary"));
   g_assert_true(u_query_looks_calculable("25% of 180"));
   g_assert_true(u_query_looks_calculable("0xff to decimal"));
+  g_assert_true(u_query_looks_calculable("0xff"));
+  g_assert_true(u_query_looks_calculable("0b1010"));
+  g_assert_true(u_query_looks_calculable("0o755"));
   g_assert_false(u_query_looks_calculable("firefox"));
   g_assert_false(u_query_looks_calculable("hyprland configuration"));
   g_assert_false(u_query_looks_calculable("python3"));
