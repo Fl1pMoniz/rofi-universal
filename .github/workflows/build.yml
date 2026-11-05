@@ -89,6 +89,7 @@ jobs:
           xorg-x11-xauth
       - name: Build RPM and verify source checksum
         run: |
+          cd "$GITHUB_WORKSPACE"
           rpmdev-setuptree
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
@@ -100,6 +101,7 @@ jobs:
           rpm -qlp "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
       - name: Install, load and remove package
         run: |
+          cd "$GITHUB_WORKSPACE"
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           mkdir -p /root/.config/rofi-universal
           printf '[general]\n' >/root/.config/rofi-universal/config.ini
