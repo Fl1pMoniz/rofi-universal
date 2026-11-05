@@ -77,7 +77,8 @@ jobs:
         run: |
           rpmdev-setuptree
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
-          git archive --format=tar.gz --prefix="rofi-universal-$version/" \
-            -o "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" HEAD
+          tar -czf "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" \
+            --exclude=.git --exclude='build*' --exclude='*.o' \
+            --transform "s,^\.,rofi-universal-$version," .
           rpmbuild -ba packaging/rofi-universal.spec
           rpm -qlp "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
