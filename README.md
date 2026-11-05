@@ -297,9 +297,9 @@ Copyright (c) 2026 Fl1pMoniz.
 
 External tools are invoked through their command-line interfaces and are not
 bundled. Their licenses remain their own: Rofi (MIT/X11), Qalculate!/qalc
-(GPL-2.0-or-later), fd (MIT/Apache-2.0), cliphist (MIT), jq (MIT), SQLite
-(public domain), wl-clipboard (GPL-3.0-or-later), xclip/xsel (GPL/MIT as
-applicable).
+(GPL-2.0-or-later), fd (MIT/Apache-2.0 and Unicode-DFS-2016), cliphist
+(GPL-3.0-only), jq (MIT and ICU/CC-BY-3.0), SQLite (public domain),
+wl-clipboard (GPL-3.0-or-later), xclip/xsel (GPL/MIT as applicable).
 
 ## Acknowledgements
 
