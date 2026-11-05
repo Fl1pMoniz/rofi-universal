@@ -36,14 +36,14 @@ Recorded on:
 - GCC 16.2.1
 - Meson release build (`-O3`, no sanitizers)
 
-One representative run:
+One representative run after the v1.1 query-signal simplification:
 
 ```text
-query analysis: 200000 iterations in 4779.286 ms (23896.4 ns/op)
-app matching:   200000 iterations in 166.544 ms (832.7 ns/op)
-file matching:  200000 iterations in 109.293 ms (546.5 ns/op)
-display format: 200000 iterations in 8.590 ms (43.0 ns/op)
-dedup (20):     50000 iterations in 81.002 ms (1620.0 ns/op)
+query analysis: 200000 iterations in 2395.851 ms (11979.3 ns/op)
+app matching:   200000 iterations in 165.879 ms (829.4 ns/op)
+file matching:  200000 iterations in 108.403 ms (542.0 ns/op)
+display format: 200000 iterations in 8.491 ms (42.5 ns/op)
+dedup (20):     50000 iterations in 75.236 ms (1504.7 ns/op)
 ```
 
 These numbers vary with CPU load, frequency scaling, compiler and build options.
