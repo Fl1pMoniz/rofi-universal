@@ -90,14 +90,13 @@ jobs:
       - name: Build RPM and verify source checksum
         run: |
           cd "$GITHUB_WORKSPACE"
-          rpmdev-setuptree
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
-          actual=$(scripts/make-source-tarball.sh "$version" "$HOME/rpmbuild/SOURCES/rofi-universal-$version.tar.gz" | awk '{print $1}')
-          echo "expected=$expected"
-          echo "actual=$actual"
+          actual=$(scripts/make-source-tarball.sh "$version" "/tmp/rofi-universal-$version.tar.gz" | awk '{print $1}')
           test -n "$expected"
           test "$actual" = "$expected"
+          rpmdev-setuptree
+          cp "/tmp/rofi-universal-$version.tar.gz" "$HOME/rpmbuild/SOURCES/"
           rpmbuild -ba packaging/rofi-universal.spec
           rpm -qip "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
           rpm -qlp "$HOME"/rpmbuild/RPMS/*/rofi-universal-"$version"-1*.rpm
