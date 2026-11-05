@@ -1,0 +1,39 @@
+# Maintainer: Fl1pMoniz <fl1pmoniz@users.noreply.github.com>
+pkgname=rofi-universal
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Unified search mode for Rofi inspired by KRunner and Spotlight"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Fl1pMoniz/rofi-universal"
+license=('MIT')
+depends=('rofi' 'glib2' 'cairo' 'gcc-libs')
+makedepends=('meson' 'ninja' 'gcc' 'pkgconf')
+optdepends=(
+  'qalculate: calculations, units and currency'
+  'fd: asynchronous file search'
+  'cliphist: clipboard history'
+  'wl-clipboard: Wayland clipboard support'
+  'xclip: X11 clipboard support'
+  'jq: Chromium bookmark parsing'
+  'sqlite: Firefox and Zen bookmark parsing'
+  'curl: inline weather'
+  'wget: inline weather fallback'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  meson setup build --prefix=/usr --buildtype=release -Dwerror=true
+  meson compile -C build
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  meson install -C build --destdir "$pkgdir"
+}

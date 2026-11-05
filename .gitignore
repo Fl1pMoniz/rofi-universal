@@ -14,6 +14,12 @@ meson-logs/
 meson-private/
 meson-info/
 
+# Packaging output
+packaging/src/
+packaging/pkg/
+packaging/*.pkg.tar.*
+*.rpm
+
 # Editors and local files
 .idea/
 .vscode/

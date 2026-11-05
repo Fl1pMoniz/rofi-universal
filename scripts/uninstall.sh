@@ -6,13 +6,15 @@ removed=0
 for path in \
     "$prefix/lib/rofi/libuniversal.so" \
     "$prefix/lib64/rofi/libuniversal.so" \
-    "$prefix/bin/rofi-universal"; do
+    "$prefix/bin/rofi-universal" \
+    "$prefix/share/rofi-universal/config.example.ini"; do
     if [ -e "$path" ]; then
         rm -f "$path"
         printf 'Removed %s\n' "$path"
         removed=1
     fi
 done
+rmdir "$prefix/share/rofi-universal" 2>/dev/null || true
 if [ "$removed" -eq 0 ]; then
     printf 'No installed rofi-universal files found under %s\n' "$prefix"
 fi
