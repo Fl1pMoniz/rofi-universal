@@ -17,6 +17,8 @@ find . -type f \
     ! -path './packaging/*' \
     ! -path './build/*' \
     ! -path './build-*/*' \
+    ! -path '*/__pycache__/*' \
+    ! -name '*.pyc' \
     ! -name '*.o' \
     ! -name '*.so' \
     ! -name '*.tar' \
