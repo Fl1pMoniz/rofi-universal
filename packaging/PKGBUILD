@@ -19,7 +19,7 @@ optdepends=(
   'wget: inline currency and weather fallback'
 )
 source=("$pkgname-$pkgver.tar::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar")
-sha256sums=('ded8d9a88212e9e66ab27b0564ede934f98421d1f1e86c9b9628ecd62b9550cb')
+sha256sums=('ea87eb245d285951d628060b1d9089ac5d1e8793c574333c1215dbb04fc1e96b')
 
 build() {
   cd "$pkgname-$pkgver"
