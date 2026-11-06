@@ -75,18 +75,13 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 ## Demo
 
-![Animated demo: applications, calculator, currency, web search, files, dictionary, GitHub, weather and clipboard](docs/demo.gif)
+![Animated demo: tabbed universal search, native calculator and inline currency conversion](docs/demo.gif)
 
-The demo was recorded against v0.2.0. Later releases keep the same keyboard-first
-interaction and result presentation; v0.3 added inline weather, v0.4 improved
-ranking and search categories, v0.5 added inline dictionary definitions, v0.6
-improved URL recognition and action-oriented descriptions, v0.7 added file
-reveal actions and bounded clipboard decoding, v0.8 added reliability and
-query-regression coverage, v0.9 added verified Ubuntu 26.04/Debian testing
-source installation and a provider support matrix, and v1.0 was the first stable
-release. v1.1 replaces the external calculator with a native calculator and
-the Frankfurter currency provider; the old demo may still show former
-examples.
+The demo shows the tabbed v1.1 launcher on Maya's Rofi theme: the universal
+search tab alongside apps, files, term, window, calc and web; native arithmetic
+(`25 * 18`); and inline Frankfurter reference-rate conversion
+(`300 eur to USD`) with its rate date. It was recorded through the Super+D
+launcher.
 
 ## Requirements
 
