@@ -11,6 +11,9 @@ command-line tools instead of a background daemon or an AI service.
 Unlike Rofi script modes, it is a native Rofi plugin. Results refresh as you
 type, and you do not need to switch modes or remember a prefix for normal use.
 
+Rofi-universal code is based on https://github.com/unkindypie/.maya-dotfiles 
+by Maya the goddess of coding herself.
+
 ## Features
 
 - **Live combined results** from all enabled providers as you type, with
