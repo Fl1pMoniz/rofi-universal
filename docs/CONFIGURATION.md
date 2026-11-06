@@ -85,7 +85,7 @@ parentheses, percentages, powers, constants, scientific notation and the
 documented functions. Invalid expressions, division/modulo by zero, invalid
 domains and non-finite results are not shown as successful calculations.
 
-Unit conversion and base-conversion commands are not part of v1.1.0.
+Unit conversion and base-conversion commands are not part of v1.2.0.
 
 ## Clipboard
 

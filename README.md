@@ -114,7 +114,39 @@ fresh Frankfurter rate is not already cached.
 
 ## Install
 
-### Fedora / Nobara
+### Fedora / Nobara — prebuilt RPM
+
+Tagged releases publish prebuilt **x86_64** RPMs for Fedora 42 and Fedora 44.
+Download the RPM that matches your Fedora release and verify it against the
+published `SHA256SUMS` before installing. No compiler or build tooling is
+required:
+
+```sh
+sudo dnf install ./rofi-universal-<version>-<release>.fcXX.x86_64.rpm
+rpm -q rofi-universal
+rofi -show universal -modi universal
+```
+
+Upgrade with the newer RPM using `sudo dnf upgrade ./rofi-universal-...rpm`,
+and remove with `sudo dnf remove rofi-universal`. User configuration in
+`~/.config/rofi-universal/` is not installed or removed by the RPM.
+
+These release RPMs are currently **unsigned**. The SHA-256 manifest provides
+integrity verification over HTTPS, not publisher authentication. Do not disable
+DNF GPG checks globally or use `--nogpgcheck` as a normal installation method.
+DNF may print a warning that OpenPGP checks were skipped for the local unsigned
+RPM; that warning is not a signature verification. If your DNF policy requires
+signed packages, use the source-build fallback or wait for a signed release. CI
+uses `--nogpgcheck` only for locally built test RPMs in an isolated container.
+
+Fedora 42 and Fedora 44 use different Rofi ABIs. Use the RPM built for your
+release; do not mix `fc42` and `fc44` packages. Nobara installs matching the
+corresponding Fedora release can use the same RPM. Binaries are currently
+verified on x86_64 only; aarch64 packages are not yet published.
+
+If no RPM matches your Fedora release, use the source-build fallback below.
+
+### Fedora / Nobara — source-build fallback
 
 ```sh
 sudo dnf install rofi rofi-devel meson ninja-build gcc pkg-config \
@@ -149,8 +181,10 @@ Rofi 1.7.6, and are not supported.
 
 ### Tested environments
 
-- Fedora 42 with Rofi 1.7.9: compiled and plugin-loaded in CI.
-- Fedora 44 with Rofi 2.0.0: compiled and plugin-loaded in CI.
+- Fedora 42 with Rofi 1.7.9: compiled, plugin-loaded and binary RPM
+  installation/upgrade/removal tested in a clean runtime environment.
+- Fedora 44 with Rofi 2.0.0: compiled, plugin-loaded and binary RPM
+  installation/upgrade/removal tested in a clean runtime environment.
 - Arch Linux current with Rofi 2.0.0: package built, installed, plugin-loaded
   and removed in an Arch container in CI.
 - Ubuntu 26.04 LTS with Rofi 2.0.0: source build, install, plugin loading and
@@ -168,11 +202,27 @@ testing.
 The Debian/Ubuntu commands below are source-build instructions, verified on
 Ubuntu 26.04 LTS and Debian testing. They are not a `.deb` package.
 
-### Fedora / Nobara package
+### Fedora / Nobara package builds
 
-An RPM spec is provided in `packaging/rofi-universal.spec`. It is built, installed
-and removed in CI on Fedora 42 and Fedora 44, but it is not currently published
-in the Fedora or Nobara repositories:
+The RPM spec is `packaging/rofi-universal.spec`. The tag-driven
+`.github/workflows/release-rpm.yml` workflow builds x86_64 RPMs for Fedora 42
+and Fedora 44, runs the test suite, installs the package in a clean runtime
+container, verifies plugin loading, tests upgrade and removal, and uploads the
+RPM with a checksum manifest as a workflow artifact. It does not publish a
+release automatically.
+
+The RPM installs only runtime files:
+
+- `%{_libdir}/rofi/libuniversal.so`
+- `/usr/bin/rofi-universal`
+- license, documentation and an example configuration file under `/usr/share`
+
+It does not install build tools, qalc, or a user configuration file. The RPM
+requires `rofi >= 1.7.6` and `json-glib`; optional provider tools remain weak
+recommendations. The package is not currently published in Fedora or Nobara
+repositories.
+
+To build locally from a release archive:
 
 ```sh
 sudo dnf builddep packaging/rofi-universal.spec

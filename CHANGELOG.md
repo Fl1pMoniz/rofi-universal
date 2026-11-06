@@ -11,6 +11,38 @@ once regular releases begin.
   apps/files/term/window modes. The `calc` tab is included automatically when
   `libcalc.so` is available, and `ROFI_UNIVERSAL_EXTRA_MODI` can append optional
   modes such as `web:<script>`.
+- Added a tag-driven Fedora RPM release workflow producing x86_64 binary RPMs
+  for Fedora 42 and 44, with source checksum verification, clean-runtime install,
+  plugin load, upgrade, removal and checksum artifacts.
+
+## [1.2.0] - 2026-11-06
+
+### Added
+
+- Tabbed Rofi launcher: `universal` is the default tab alongside apps, files,
+  term, window, calc and web where those modes are available.
+- Refreshed demo GIF showing the tabbed launcher, native arithmetic and inline
+  Frankfurter currency conversion.
+- Tag-driven Fedora RPM release workflow for x86_64 Fedora 42 and Fedora 44,
+  including clean-runtime installation, plugin load, upgrade/removal tests,
+  source checksum verification and release-bundle assembly.
+
+### Changed
+
+- Fedora RPM packaging now pins the exact Rofi package version used at build
+  time because the Rofi plugin ABI differs between Fedora 42 and Fedora 44.
+- Documentation now distinguishes prebuilt Fedora/Nobara RPM installation from
+  source builds for Arch and Debian/Ubuntu.
+
+### Limitations
+
+- Release RPMs are currently unsigned. Verify the published SHA-256 manifests
+  before installation; do not disable DNF GPG checks globally.
+- aarch64 packages are not built or tested.
+- Nobara is supported only insofar as it matches a tested Fedora package
+  environment; it has not been directly tested.
+- Binary Fedora RPMs are prepared locally but not published until an authorized
+  v1.2.0 release is created.
 
 ## [1.1.0] - 2026-11-05
 

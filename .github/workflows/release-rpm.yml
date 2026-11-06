@@ -1,0 +1,184 @@
+name: release-rpm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-rpm:
+    name: Build Fedora ${{ matrix.fedora }} RPM
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [42, 44]
+    container: fedora:${{ matrix.fedora }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify release tag and version
+        run: |
+          set -eu
+          tag=${GITHUB_REF_NAME#v}
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          test "$tag" = "$version"
+
+      - name: Install build dependencies
+        run: >
+          dnf install -y
+          gcc glib2-devel cairo-devel json-glib-devel meson ninja-build pkg-config
+          rofi-devel rpm-build rpmdevtools
+
+      - name: Build and verify source archive
+        run: |
+          set -eu
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          expected=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
+          actual=$(scripts/make-source-tarball.sh "$version" "/tmp/rofi-universal-$version.tar" | awk '{print $1}')
+          test -n "$expected"
+          test "$actual" = "$expected"
+
+      - name: Build binary RPM and upgrade RPM
+        run: |
+          set -eu
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          rpmdev-setuptree
+          cp "/tmp/rofi-universal-$version.tar" "$HOME/rpmbuild/SOURCES/"
+          rpmbuild -ba packaging/rofi-universal.spec
+          sed 's/^Release:.*/Release:        2%{?dist}/' packaging/rofi-universal.spec > /tmp/rofi-universal-upgrade.spec
+          rpmbuild -bb /tmp/rofi-universal-upgrade.spec
+          mkdir -p dist/release dist/test
+          main_rpm=$(find "$HOME/rpmbuild/RPMS" -name "rofi-universal-$version-1.fc${{ matrix.fedora }}.*.rpm" -print -quit)
+          upgrade_rpm=$(find "$HOME/rpmbuild/RPMS" -name "rofi-universal-$version-2.fc${{ matrix.fedora }}.*.rpm" -print -quit)
+          test -n "$main_rpm"
+          test -n "$upgrade_rpm"
+          cp "$main_rpm" dist/release/
+          cp "$upgrade_rpm" dist/test/
+          (cd dist/release && sha256sum *.rpm > SHA256SUMS)
+          (cd dist/test && sha256sum *.rpm > SHA256SUMS)
+          rpm -qip "$main_rpm"
+          rpm -qpR "$main_rpm"
+          rpm -qpl "$main_rpm"
+          test "$(rpm -qp --qf '%{ARCH}' "$main_rpm")" = x86_64
+          ! rpm -qpR "$main_rpm" | grep -qi qalc
+
+      - name: Upload release RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-fedora-${{ matrix.fedora }}
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload upgrade-test RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-upgrade-fedora-${{ matrix.fedora }}
+          path: dist/test/*
+          if-no-files-found: error
+          retention-days: 14
+
+  runtime-rpm:
+    name: Fedora ${{ matrix.fedora }} runtime RPM test
+    needs: build-rpm
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [42, 44]
+    container: fedora:${{ matrix.fedora }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download release RPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-fedora-${{ matrix.fedora }}
+          path: dist/release
+
+      - name: Download upgrade-test RPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-upgrade-fedora-${{ matrix.fedora }}
+          path: dist/test
+
+      - name: Install runtime dependencies only
+        run: >
+          dnf install -y
+          rofi curl python3 xorg-x11-server-Xvfb xorg-x11-xauth xdotool dbus-daemon
+
+      - name: Verify no build tooling is present
+        run: |
+          set -eu
+          ! command -v gcc
+          ! command -v meson
+          ! command -v ninja
+          ! command -v pkg-config
+
+      - name: Install, load and upgrade RPM
+        run: |
+          set -eu
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          main_rpm=$(find dist/release -name "rofi-universal-$version-1.fc${{ matrix.fedora }}.*.rpm" -print -quit)
+          upgrade_rpm=$(find dist/test -name "rofi-universal-$version-2.fc${{ matrix.fedora }}.*.rpm" -print -quit)
+          test -n "$main_rpm"
+          test -n "$upgrade_rpm"
+          (cd dist/release && sha256sum -c SHA256SUMS)
+          (cd dist/test && sha256sum -c SHA256SUMS)
+          test -f /usr/lib64/rofi/libuniversal.so || true
+          dnf install -y --nogpgcheck "$main_rpm"
+          test -f /usr/lib64/rofi/libuniversal.so
+          test -f /usr/bin/rofi-universal
+          rpm -q rofi-universal
+          xvfb-run -a env ROFI_UNIVERSAL_BUILD=/usr/lib64/rofi python3 tests/test_integration.py
+          xvfb-run -a env ROFI_UNIVERSAL_BUILD=/usr/lib64/rofi python3 tests/test_calculator_currency.py
+          dnf install -y --nogpgcheck "$upgrade_rpm"
+          rpm -q rofi-universal | grep -q -- "-2.fc${{ matrix.fedora }}"
+          test -f /usr/lib64/rofi/libuniversal.so
+          dnf remove -y rofi-universal
+          test ! -e /usr/lib64/rofi/libuniversal.so
+          test ! -e /usr/bin/rofi-universal
+
+  release-bundle:
+    name: Assemble release artifact bundle
+    needs: build-rpm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download Fedora 42 RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-fedora-42
+          path: release
+
+      - name: Download Fedora 44 RPM
+        uses: actions/download-artifact@v4
+        with:
+          name: rpm-fedora-44
+          path: release
+
+      - name: Add source archive and checksums
+        run: |
+          set -eu
+          version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
+          test "${GITHUB_REF_NAME#v}" = "$version"
+          scripts/make-source-tarball.sh "$version" "release/rofi-universal-$version.tar"
+          (cd release && sha256sum *.rpm *.tar > SHA256SUMS)
+          cat release/SHA256SUMS
+
+      - name: Upload combined release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: rofi-universal-${{ github.ref_name }}-release
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30

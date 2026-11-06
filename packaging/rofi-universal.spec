@@ -1,5 +1,7 @@
+%global rofi_version %(pkg-config --modversion rofi)
+
 Name:           rofi-universal
-Version:        1.1.0
+Version:        1.2.0
 Release:        1%{?dist}
 Summary:        Unified search mode for Rofi inspired by KRunner and Spotlight
 
@@ -18,7 +20,7 @@ BuildRequires:  pkgconfig(gmodule-2.0)
 BuildRequires:  pkgconfig(cairo)
 BuildRequires:  pkgconfig(json-glib-1.0) >= 1.6
 
-Requires:       rofi
+Requires:       rofi = %{rofi_version}
 Requires:       json-glib
 Recommends:     fd-find
 Recommends:     cliphist
@@ -57,6 +59,12 @@ tools, and does not require a background daemon or an AI service.
 %{_datadir}/rofi-universal/config.example.ini
 
 %changelog
+* Fri Nov 06 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 1.2.0-1
+- Update to rofi-universal 1.2.0.
+- Include the tabbed Rofi launcher and refreshed demo.
+- Add Fedora binary RPM release packaging and validation workflow.
+- RPMs are unsigned; verify the published SHA-256 manifests before installing.
+
 * Thu Nov 05 2026 Fl1pMoniz <fl1pmoniz@users.noreply.github.com> - 1.1.0-1
 - Update to rofi-universal 1.1.0.
 - Replace the external calculator with a native evaluator and Frankfurter

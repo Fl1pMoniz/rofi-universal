@@ -1,6 +1,6 @@
 # Provider support matrix
 
-This matrix describes the providers shipped with rofi-universal 1.1.0. Status
+This matrix describes the providers shipped with rofi-universal 1.2.0. Status
 reflects the current implementation and test coverage, not a promise of
 compatibility with every desktop environment.
 
@@ -64,7 +64,7 @@ compatibility with every desktop environment.
 - Results are formatted with a locale-independent decimal separator and no
   unnecessary trailing zeroes.
 - No external calculator executable is required at build, install or runtime.
-- Unit conversion and base-conversion commands are not part of v1.1.0.
+- Unit conversion and base-conversion commands are not part of v1.2.0.
 
 ## Currency
 
