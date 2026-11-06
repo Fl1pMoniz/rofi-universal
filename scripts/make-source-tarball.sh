@@ -1,7 +1,9 @@
 #!/bin/sh
 # Create a deterministic release source archive from a clean checkout.
 # Packaging and CI metadata are excluded so their checksums and configuration
-# do not change the archive consumed by the package builds.
+# do not change the archive consumed by the package builds. Release output and
+# generated distribution directories are excluded explicitly so downloaded
+# release assets cannot contaminate a source archive.
 set -eu
 umask 022
 version=${1:?usage: $0 VERSION [OUTPUT]}
@@ -15,6 +17,8 @@ find . -type f \
     ! -path './.git/*' \
     ! -path './.github/*' \
     ! -path './packaging/*' \
+    ! -path './release/*' \
+    ! -path './dist/*' \
     ! -path './build/*' \
     ! -path './build-*/*' \
     ! -path '*/__pycache__/*' \

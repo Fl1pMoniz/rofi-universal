@@ -158,27 +158,44 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: rpm-fedora-42
-          path: release
+          path: ${{ runner.temp }}/rpms/fedora42
 
       - name: Download Fedora 44 RPM
         uses: actions/download-artifact@v4
         with:
           name: rpm-fedora-44
-          path: release
+          path: ${{ runner.temp }}/rpms/fedora44
 
       - name: Add source archive and checksums
         run: |
           set -eu
           version=$(sed -n "s/.*version: '\([^']*\)'.*/\1/p" meson.build | head -1)
           test "${GITHUB_REF_NAME#v}" = "$version"
-          scripts/make-source-tarball.sh "$version" "release/rofi-universal-$version.tar"
-          (cd release && sha256sum *.rpm *.tar > SHA256SUMS)
-          cat release/SHA256SUMS
+          release_dir="$RUNNER_TEMP/release"
+          source_archive="$release_dir/rofi-universal-$version.tar"
+          mkdir -p "$release_dir"
+          scripts/make-source-tarball.sh "$version" "$source_archive"
+          expected_hash=$(sed -n "s/^sha256sums=('\([0-9a-f]*\)').*/\1/p" packaging/PKGBUILD)
+          actual_hash=$(sha256sum "$source_archive" | awk '{print $1}')
+          test -n "$expected_hash"
+          test "$actual_hash" = "$expected_hash"
+          if tar -tf "$source_archive" | grep -Eq '(^|/)(release|dist)/|\.rpm$|(^|/)SHA256SUMS$'; then
+            echo 'source archive contains release artifacts' >&2
+            exit 1
+          fi
+          rpm42=$(find "$RUNNER_TEMP/rpms/fedora42" -name "rofi-universal-$version-1.fc42.*.rpm" -print -quit)
+          rpm44=$(find "$RUNNER_TEMP/rpms/fedora44" -name "rofi-universal-$version-1.fc44.*.rpm" -print -quit)
+          test -n "$rpm42"
+          test -n "$rpm44"
+          cp "$rpm42" "$rpm44" "$release_dir/"
+          (cd "$release_dir" && sha256sum *.rpm *.tar > SHA256SUMS)
+          test "$(sha256sum "$source_archive" | awk '{print $1}')" = "$expected_hash"
+          cat "$release_dir/SHA256SUMS"
 
       - name: Upload combined release bundle
         uses: actions/upload-artifact@v4
         with:
           name: rofi-universal-${{ github.ref_name }}-release
-          path: release/*
+          path: ${{ runner.temp }}/release/*
           if-no-files-found: error
           retention-days: 30

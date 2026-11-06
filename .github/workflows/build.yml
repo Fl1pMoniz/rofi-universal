@@ -27,6 +27,8 @@ jobs:
         run: meson compile -C build
       - name: Test
         run: meson test -C build --print-errorlogs
+      - name: Source archive regression test
+        run: python3 tests/test_source_archive.py
       - name: Load plugin through Rofi
         run: xvfb-run -a env ROFI_UNIVERSAL_BUILD="$PWD/build" python3 tests/test_integration.py
       - name: Rapid query and teardown smoke test

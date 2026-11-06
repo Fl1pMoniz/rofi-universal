@@ -442,6 +442,7 @@ tests/
   test_filemanager_dbus.py Mock FileManager1 success-path test
   test_clipboard_actions.py Xvfb clipboard decode/copy test with fake tools
   test_calculator_currency.py Xvfb native calculation and currency tests
+  test_source_archive.py Source archive determinism/release-artifact exclusion test
   test_query_regression.c Structured query-intent and negative regression cases
   benchmark_core.c Optional query, matching, formatting and dedup benchmark
 ```

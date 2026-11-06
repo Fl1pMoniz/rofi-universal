@@ -33,6 +33,9 @@ once regular releases begin.
   time because the Rofi plugin ABI differs between Fedora 42 and Fedora 44.
 - Documentation now distinguishes prebuilt Fedora/Nobara RPM installation from
   source builds for Arch and Debian/Ubuntu.
+- Source archive generation explicitly excludes `release/` and `dist/` output;
+  a regression test verifies that downloaded release artifacts cannot alter the
+  source archive checksum.
 
 ### Limitations
 
@@ -41,8 +44,7 @@ once regular releases begin.
 - aarch64 packages are not built or tested.
 - Nobara is supported only insofar as it matches a tested Fedora package
   environment; it has not been directly tested.
-- Binary Fedora RPMs are prepared locally but not published until an authorized
-  v1.2.0 release is created.
+- Binary Fedora RPMs are prepared for the v1.2.0 release.
 
 ## [1.1.0] - 2026-11-05
 

@@ -13,8 +13,10 @@ Release archives are generated from the immutable `vVERSION` tag with:
 scripts/make-source-tarball.sh VERSION /tmp/rofi-universal-VERSION.tar
 ```
 
-The script excludes `packaging/` so the checksum can be recorded in the
-PKGBUILD without changing the archive. The resulting tarball is attached to the
+The script excludes `packaging/`, `release/` and `dist/` so packaging metadata
+and downloaded release output cannot change the archive. The regression test
+`tests/test_source_archive.py` verifies deterministic generation and the absence
+of RPMs or checksum manifests in the source archive. The resulting tarball is attached to the
 GitHub release as `rofi-universal-VERSION.tar`. Both the RPM spec and the
 PKGBUILD consume that same asset.
 
