@@ -15,6 +15,10 @@ type, and you do not need to switch modes or remember a prefix for normal use.
 
 - **Live combined results** from all enabled providers as you type, with
   duplicate results for the same provider and target collapsed.
+- **Tabbed launcher:** starts on the universal tab while keeping Rofi's
+  apps/files/term/window modes; `calc` is added automatically when the
+  `rofi-calc` plugin is available, and extra modes can be appended with
+  `ROFI_UNIVERSAL_EXTRA_MODI`.
 - **Independent provider relevance scoring** with simple, maintainable rules:
   intents are no longer exclusive, so one query can produce useful app, file,
   calculator, web and clipboard results at the same time.

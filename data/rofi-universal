@@ -6,7 +6,20 @@ prefix=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
 plugin_dirs=${ROFI_UNIVERSAL_PLUGIN_PATH:-"$prefix/lib/rofi:$prefix/lib64/rofi"}
 export ROFI_PLUGIN_PATH="$plugin_dirs${ROFI_PLUGIN_PATH:+:$ROFI_PLUGIN_PATH}"
 
-set -- -theme-str 'textbox-title { str: "Search"; }' -show universal -modi universal "$@"
+modi=universal,drun,filebrowser,run,window
+old_ifs=$IFS
+IFS=:
+for dir in $ROFI_PLUGIN_PATH; do
+    if [ -f "$dir/libcalc.so" ]; then
+        modi="$modi,calc"
+        break
+    fi
+done
+IFS=$old_ifs
+if [ -n "${ROFI_UNIVERSAL_EXTRA_MODI:-}" ]; then
+    modi="$modi,$ROFI_UNIVERSAL_EXTRA_MODI"
+fi
+set -- -theme-str 'textbox-title { str: "Search"; }' -show universal -modi "$modi" "$@"
 config=${ROFI_UNIVERSAL_ROFI_CONFIG:-"$HOME/.config/rofi/config.rasi"}
 if [ -f "$config" ]; then
     set -- -config "$config" "$@"

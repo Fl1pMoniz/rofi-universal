@@ -3,6 +3,15 @@
 All notable changes are documented here. The project follows semantic versioning
 once regular releases begin.
 
+## [Unreleased]
+
+### Added
+
+- The launcher now starts on the `universal` tab while retaining Rofi's
+  apps/files/term/window modes. The `calc` tab is included automatically when
+  `libcalc.so` is available, and `ROFI_UNIVERSAL_EXTRA_MODI` can append optional
+  modes such as `web:<script>`.
+
 ## [1.1.0] - 2026-11-05
 
 ### Added
