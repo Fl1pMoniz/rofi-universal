@@ -69,7 +69,7 @@ static void test_currency_metadata(void) {
 }
 
 static const char *valid_rates =
-    "[{\"date\":\"2026-11-05\",\"base\":\"EUR\",\"quote\":\"GBP\","
+    "[{\"date\":\"2026-11-04\",\"base\":\"EUR\",\"quote\":\"GBP\","
     "\"rate\":0.83519},"
     "{\"date\":\"2026-11-05\",\"base\":\"EUR\",\"quote\":\"USD\","
     "\"rate\":1.1251},"
@@ -80,14 +80,19 @@ static void test_currency_parsing(void) {
   UCurrencyRates *rates = u_currency_parse_rates(valid_rates, "EUR");
   g_assert_nonnull(rates);
   g_assert_cmpstr(rates->base, ==, "EUR");
-  g_assert_cmpstr(rates->date, ==, "2026-11-05");
   double rate = 0;
-  g_assert_true(u_currency_rate(rates, "USD", &rate));
+  const char *rate_date = NULL;
+  g_assert_true(u_currency_rate(rates, "USD", &rate, &rate_date));
   g_assert_cmpfloat_with_epsilon(rate, 1.1251, 1e-12);
-  g_assert_true(u_currency_rate(rates, "jpy", &rate));
+  g_assert_cmpstr(rate_date, ==, "2026-11-05");
+  g_assert_true(u_currency_rate(rates, "GBP", &rate, &rate_date));
+  g_assert_cmpfloat_with_epsilon(rate, 0.83519, 1e-12);
+  g_assert_cmpstr(rate_date, ==, "2026-11-04");
+  g_assert_true(u_currency_rate(rates, "jpy", &rate, &rate_date));
   g_assert_cmpfloat_with_epsilon(rate, 178.12, 1e-12);
-  g_assert_false(u_currency_rate(rates, "CHF", &rate));
-  g_assert_false(u_currency_rate(rates, "USDX", &rate));
+  g_assert_cmpstr(rate_date, ==, "2026-11-05");
+  g_assert_false(u_currency_rate(rates, "CHF", &rate, &rate_date));
+  g_assert_false(u_currency_rate(rates, "USDX", &rate, &rate_date));
   u_currency_rates_free(rates);
 
   rates = u_currency_parse_rates(valid_rates, "usd");
@@ -199,7 +204,7 @@ static void test_currency_cache(void) {
                                 &fresh);
   g_assert_nonnull(cached);
   g_assert_true(fresh);
-  g_assert_true(u_currency_rate(cached, "USD", &rate));
+  g_assert_true(u_currency_rate(cached, "USD", &rate, NULL));
   g_assert_cmpfloat_with_epsilon(rate, 2.0, 1e-12);
   g_assert_null(u_currency_cache_get(&cache, "USD", now, &fresh));
   g_assert_false(fresh);

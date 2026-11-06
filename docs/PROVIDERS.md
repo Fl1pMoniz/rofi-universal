@@ -74,15 +74,16 @@ compatibility with every desktop environment.
 - Only the base currency code is sent. No API key, account or credentials are
   required.
 - Results are asynchronous and cached in memory by base currency. Fresh results
-  show `Reference rate · Frankfurter · Rate date: YYYY-MM-DD`.
+  show a compact `Ref YYYY-MM-DD` description; the provider is Frankfurter.
 - Cached-but-expired rates may be shown while a refresh is attempted or after a
-  refresh failure; their description says `Cached rate`.
+  refresh failure; their description says `Cached YYYY-MM-DD`.
 - If no usable cached rate exists and the request fails, no conversion result is
   shown and the status line reports the failure. A normal web search may remain
   available, but it is not presented as a conversion.
 - Frankfurter rates are blended reference rates, not bank, commercial,
   transaction or live trading rates. Rates update daily and may lag the market.
 - Currency symbols such as `$` are not accepted. Use explicit ISO 4217 codes.
+- Zero and negative amounts are accepted and converted arithmetically.
 - Supported codes: AED, AFN, ALL, AMD, ANG, AOA, ARS, AUD, AWG, AZN, BAM, BBD, BDT, BGN, BHD, BIF, BMD, BND, BOB, BRL, BSD, BTN, BWP, BYN, BZD, CAD, CDF, CHF, CLP, CNY, COP, CRC, CUP, CVE, CZK, DJF, DKK, DOP, DZD, EGP, ERN, ETB, EUR, FJD, FKP, GBP, GEL, GHS, GIP, GMD, GNF, GTQ, GYD, HKD, HNL, HTG, HUF, IDR, ILS, INR, IQD, IRR, ISK, JMD, JOD, JPY, KES, KGS, KHR, KMF, KPW, KRW, KWD, KYD, KZT, LAK, LBP, LKR, LRD, LSL, LYD, MAD, MDL, MGA, MKD, MMK, MNT, MOP, MRU, MUR, MVR, MWK, MXN, MYR, MZN, NAD, NGN, NIO, NOK, NPR, NZD, OMR, PAB, PEN, PGK, PHP, PKR, PLN, PYG, QAR, RON, RSD, RUB, RWF, SAR, SBD, SCR, SDG, SEK, SGD, SHP, SLE, SOS, SRD, SSP, STN, SVC, SYP, SZL, THB, TJS, TMT, TND, TOP, TRY, TTD, TWD, TZS, UAH, UGX, USD, UYU, UZS, VES, VND, VUV, WST, XAF, XCD, XOF, XPF, YER, ZAR, ZMW.
 - Currencies with zero minor units: BIF, CLP, DJF, GNF, ISK, JPY, KMF, KRW, PYG, RWF, UGX, VND, VUV, XAF, XOF, XPF.
 - Currencies with three minor units: BHD, IQD, JOD, KWD, LYD, OMR, TND.

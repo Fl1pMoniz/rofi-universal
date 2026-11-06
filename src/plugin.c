@@ -1113,9 +1113,10 @@ static gboolean add_currency_result(UMode *mode, const UCurrencyQuery *query,
                                     const UCurrencyRates *rates,
                                     gboolean fresh) {
   double rate = 1.0;
+  const char *rate_date = NULL;
   gboolean same_currency = g_strcmp0(query->base, query->quote) == 0;
   if (!same_currency &&
-      (!rates || !u_currency_rate(rates, query->quote, &rate))) {
+      (!rates || !u_currency_rate(rates, query->quote, &rate, &rate_date))) {
     return FALSE;
   }
   double converted = query->amount * rate;
@@ -1136,11 +1137,11 @@ static gboolean add_currency_result(UMode *mode, const UCurrencyQuery *query,
   if (same_currency) {
     description = g_strdup("Same currency · no conversion");
   } else if (fresh) {
-    description = g_strdup_printf(
-        "Reference rate · Frankfurter · Rate date: %s", rates->date);
+    description =
+        g_strdup_printf("Ref %s", rate_date ? rate_date : "unknown");
   } else {
-    description = g_strdup_printf(
-        "Cached rate · Frankfurter · Rate date: %s", rates->date);
+    description =
+        g_strdup_printf("Cached %s", rate_date ? rate_date : "unknown");
   }
   add_result(mode, u_result_new(U_PROVIDER_CALC, title, description,
                                 "accessories-calculator", fresh ? 1000 : 950,

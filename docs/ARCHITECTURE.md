@@ -80,11 +80,14 @@ construction and never invokes a subprocess.
 `src/currency.c` parses `<amount> <ISO base> (to|in) <ISO quote>` queries,
 validates both codes against an embedded current ISO 4217 list with minor-unit
 metadata, builds the Frankfurter v2 rates URL, parses the JSON array with
-JSON-GLib and keeps a bounded in-memory cache keyed by base currency. Each cache
-entry retains the provider's rate date and local fetch time. Fresh entries are
-used directly; expired entries may be shown as cached while a refresh is
-attempted. A refresh failure keeps a stale cached result visible with an explicit
-cached description and status notice, or reports unavailable when no cache exists.
+JSON-GLib and keeps a bounded in-memory cache keyed by base currency. Each stored
+rate retains its own provider publication date, because different currencies in
+one response may use different dates; each cache entry also records local fetch
+time. Fresh entries are used directly; expired entries may be shown as cached
+while a refresh is attempted. A refresh failure keeps a stale cached result visible with an explicit
+cached description and status notice, or reports unavailable when no cache exists. The compact
+row description is `Ref YYYY-MM-DD` for fresh data and `Cached YYYY-MM-DD` for
+cached data, so the provider date remains visible in narrow Rofi themes.
 Only the base currency code is sent to the provider.
 
 ## Actions

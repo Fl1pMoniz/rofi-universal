@@ -172,13 +172,21 @@ static gboolean object_number(JsonObject *object, const char *key,
   return TRUE;
 }
 
+static void currency_rate_free(gpointer data) {
+  UCurrencyRate *rate = data;
+  if (!rate) {
+    return;
+  }
+  g_free(rate->date);
+  g_free(rate);
+}
+
 void u_currency_rates_free(gpointer data) {
   UCurrencyRates *rates = data;
   if (!rates) {
     return;
   }
   g_free(rates->base);
-  g_free(rates->date);
   if (rates->rates) {
     g_hash_table_destroy(rates->rates);
   }
@@ -209,7 +217,7 @@ UCurrencyRates *u_currency_parse_rates(const char *raw,
   }
   UCurrencyRates *result = g_new0(UCurrencyRates, 1);
   result->rates =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, currency_rate_free);
   gboolean valid = TRUE;
   for (guint i = 0; i < json_array_get_length(array) && valid; i++) {
     JsonNode *row_node = json_array_get_element(array, i);
@@ -230,9 +238,7 @@ UCurrencyRates *u_currency_parse_rates(const char *raw,
     }
     if (!result->base) {
       result->base = g_ascii_strup(base, -1);
-      result->date = g_strdup(date);
-    } else if (g_ascii_strcasecmp(result->base, base) != 0 ||
-               g_strcmp0(result->date, date) != 0) {
+    } else if (g_ascii_strcasecmp(result->base, base) != 0) {
       valid = FALSE;
       break;
     }
@@ -242,8 +248,9 @@ UCurrencyRates *u_currency_parse_rates(const char *raw,
       valid = FALSE;
       break;
     }
-    double *stored = g_new(double, 1);
-    *stored = rate;
+    UCurrencyRate *stored = g_new0(UCurrencyRate, 1);
+    stored->rate = rate;
+    stored->date = g_strdup(date);
     g_hash_table_insert(result->rates, quote_upper, stored);
   }
   g_object_unref(parser);
@@ -255,7 +262,7 @@ UCurrencyRates *u_currency_parse_rates(const char *raw,
 }
 
 gboolean u_currency_rate(const UCurrencyRates *rates, const char *quote,
-                         double *rate) {
+                         double *rate, const char **date) {
   if (!rates || !rates->rates || !quote) {
     return FALSE;
   }
@@ -267,12 +274,15 @@ gboolean u_currency_rate(const UCurrencyRates *rates, const char *quote,
     upper[i] = g_ascii_toupper(quote[i]);
   }
   upper[3] = '\0';
-  double *stored = g_hash_table_lookup(rates->rates, upper);
+  UCurrencyRate *stored = g_hash_table_lookup(rates->rates, upper);
   if (!stored) {
     return FALSE;
   }
   if (rate) {
-    *rate = *stored;
+    *rate = stored->rate;
+  }
+  if (date) {
+    *date = stored->date;
   }
   return TRUE;
 }

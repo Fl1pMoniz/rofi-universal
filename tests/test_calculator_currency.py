@@ -128,7 +128,9 @@ def test_currency_success():
             bindir / "curl",
             "#!/bin/sh\n"
             f"printf '%s\\n' \"$*\" >> {curl_log}\n"
-            "printf '%s' '[{\"date\":\"2026-11-05\",\"base\":\"EUR\","
+            "printf '%s' '[{\"date\":\"2026-11-04\",\"base\":\"EUR\","
+            "\"quote\":\"GBP\",\"rate\":0.83519},"
+            "{\"date\":\"2026-11-05\",\"base\":\"EUR\","
             "\"quote\":\"USD\",\"rate\":1.1251}]'\n",
         )
         write_executable(
@@ -187,7 +189,9 @@ def test_currency_cache_reuse():
             bindir / "curl",
             "#!/bin/sh\n"
             f"printf 'request\\n' >> {curl_log}\n"
-            "printf '%s' '[{\"date\":\"2026-11-05\",\"base\":\"EUR\","
+            "printf '%s' '[{\"date\":\"2026-11-04\",\"base\":\"EUR\","
+            "\"quote\":\"GBP\",\"rate\":0.83519},"
+            "{\"date\":\"2026-11-05\",\"base\":\"EUR\","
             "\"quote\":\"USD\",\"rate\":1.1251}]'\n",
         )
         write_executable(
@@ -257,7 +261,9 @@ def test_slow_currency_does_not_block_arithmetic():
             bindir / "curl",
             "#!/bin/sh\n"
             "sleep 3\n"
-            "printf '%s' '[{\"date\":\"2026-11-05\",\"base\":\"EUR\","
+            "printf '%s' '[{\"date\":\"2026-11-04\",\"base\":\"EUR\","
+            "\"quote\":\"GBP\",\"rate\":0.83519},"
+            "{\"date\":\"2026-11-05\",\"base\":\"EUR\","
             "\"quote\":\"USD\",\"rate\":1.1251}]'\n",
         )
         write_executable(

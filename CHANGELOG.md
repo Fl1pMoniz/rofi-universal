@@ -33,6 +33,9 @@ once regular releases begin.
 - Removed the external calculator runtime dependency and its configuration.
 - Currency results are reference rates from a public provider, not bank or live
   trading rates.
+- Currency rates retain their individual provider dates because a Frankfurter
+  response may contain mixed dates across currencies; narrow Rofi themes show a
+  compact `Ref YYYY-MM-DD` or `Cached YYYY-MM-DD` description.
 - Calculator results are evaluated locally and synchronously; currency requests
   use the existing cancellable process/fetch infrastructure.
 - Documentation, example configuration, packaging metadata and CI tests now

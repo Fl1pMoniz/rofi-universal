@@ -15,8 +15,12 @@ typedef struct {
 } UCurrencyQuery;
 
 typedef struct {
-  char *base;
+  double rate;
   char *date;
+} UCurrencyRate;
+
+typedef struct {
+  char *base;
   GHashTable *rates;
   gint64 fetched_at;
 } UCurrencyRates;
@@ -34,7 +38,7 @@ char *u_currency_rates_url(const char *base);
 UCurrencyRates *u_currency_parse_rates(const char *raw,
                                        const char *expected_base);
 gboolean u_currency_rate(const UCurrencyRates *rates, const char *quote,
-                         double *rate);
+                         double *rate, const char **date);
 char *u_currency_format_amount(double amount, int minor_units);
 void u_currency_rates_free(gpointer data);
 
